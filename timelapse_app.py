@@ -33,6 +33,79 @@ def save_config(data):
     CONFIG_PATH.write_text(json.dumps(data, indent=2))
 
 
+def apply_camera_controls(device, controls):
+    """Best-effort v4l2-ctl tuning; silently no-ops if v4l2-ctl or the control isn't available."""
+    if not controls or shutil.which("v4l2-ctl") is None:
+        return
+    subprocess.run(
+        ["v4l2-ctl", "--device", device, "--set-ctrl", controls],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+
+
+def query_int_controls(device):
+    """Return {control_name: {'min':, 'max':, 'default':, ...}} for whatever this camera
+    actually exposes — different UVC cameras have very different control sets/ranges, so
+    tuning must be computed per-device rather than hardcoded."""
+    if shutil.which("v4l2-ctl") is None:
+        return {}
+    result = subprocess.run(
+        ["v4l2-ctl", "--device", device, "--list-ctrls"],
+        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
+    )
+    controls = {}
+    for line in result.stdout.splitlines():
+        line = line.strip()
+        if not line or "0x" not in line or ":" not in line:
+            continue
+        name = line.split()[0]
+        kv = {}
+        for part in line.split(":", 1)[1].split():
+            if "=" in part:
+                k, v = part.split("=", 1)
+                try:
+                    kv[k] = int(v)
+                except ValueError:
+                    pass
+        if "min" in kv and "max" in kv:
+            controls[name] = kv
+    return controls
+
+
+def build_low_light_controls(device):
+    """Boost whichever brightening controls this specific camera actually has."""
+    controls = query_int_controls(device)
+    parts = []
+    if "backlight_compensation" in controls:
+        c = controls["backlight_compensation"]
+        parts.append(f"backlight_compensation={c['max']}")
+    if "gain" in controls:
+        c = controls["gain"]
+        target = round(c["min"] + 0.7 * (c["max"] - c["min"]))
+        parts.append(f"gain={target}")
+    if "brightness" in controls:
+        c = controls["brightness"]
+        base = c.get("default", (c["min"] + c["max"]) // 2)
+        target = min(c["max"], round(base + 0.35 * (c["max"] - base)))
+        parts.append(f"brightness={target}")
+    if "gamma" in controls:
+        c = controls["gamma"]
+        base = c.get("default", (c["min"] + c["max"]) // 2)
+        target = min(c["max"], round(base + 0.25 * (c["max"] - base)))
+        parts.append(f"gamma={target}")
+    return ",".join(parts)
+
+
+def build_auto_controls(device):
+    """Reset the same controls build_low_light_controls touches back to their defaults."""
+    controls = query_int_controls(device)
+    parts = []
+    for name in ("backlight_compensation", "gain", "brightness", "gamma"):
+        if name in controls and "default" in controls[name]:
+            parts.append(f"{name}={controls[name]['default']}")
+    return ",".join(parts)
+
+
 class TimelapseApp:
     def __init__(self, root):
         self.root = root
@@ -115,6 +188,14 @@ class TimelapseApp:
         )
         row += 1
 
+        self.lowlight_var = tk.BooleanVar(value=self.cfg.get("low_light_boost", True))
+        ttk.Checkbutton(
+            frm_settings,
+            text="Boost low light (recommended — fixes backlit/dim shots)",
+            variable=self.lowlight_var,
+        ).grid(row=row, column=0, columnspan=3, sticky="w", padx=8, pady=(0, 6))
+        row += 1
+
         # Controls and status are packed before the preview (and the preview is capped in size)
         # so they can never be pushed off an unresizable window once a captured photo enlarges
         # the preview area.
@@ -170,6 +251,7 @@ class TimelapseApp:
             "interval": interval,
             "fps": fps,
             "output_root": self.outdir_var.get(),
+            "low_light_boost": self.lowlight_var.get(),
         }
 
     # ---------- capture ----------
@@ -199,6 +281,12 @@ class TimelapseApp:
         self.status_var.set("Testing camera...")
 
         def worker():
+            apply_camera_controls(
+                settings["device"],
+                build_low_light_controls(settings["device"])
+                if settings["low_light_boost"]
+                else build_auto_controls(settings["device"]),
+            )
             tmp = Path("/tmp/timelapse_test_frame.jpg")
             ok, err = self._capture_frame(settings["device"], settings["resolution"], tmp)
             self.msg_queue.put(("test_result", ok, err, tmp))
@@ -216,6 +304,12 @@ class TimelapseApp:
             return
 
         save_config(settings)
+        apply_camera_controls(
+            settings["device"],
+            build_low_light_controls(settings["device"])
+            if settings["low_light_boost"]
+            else build_auto_controls(settings["device"]),
+        )
 
         session_name = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         self.session_dir = Path(settings["output_root"]).expanduser() / session_name
