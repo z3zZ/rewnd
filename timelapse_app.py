@@ -16,7 +16,7 @@ from PIL import Image, ImageTk
 
 CONFIG_PATH = Path.home() / ".config" / "timelapse-app" / "config.json"
 DEFAULT_OUTPUT_ROOT = Path.home() / "Timelapses"
-RESOLUTIONS = ["1920x1080", "1280x720", "640x480"]
+FALLBACK_RESOLUTIONS = ["1920x1080", "1280x720", "640x480"]
 
 
 def load_config():
@@ -106,6 +106,28 @@ def build_auto_controls(device):
     return ",".join(parts)
 
 
+def list_device_resolutions(device):
+    if shutil.which("v4l2-ctl") is None:
+        return list(FALLBACK_RESOLUTIONS)
+    result = subprocess.run(
+        ["v4l2-ctl", "--device", device, "--list-formats-ext"],
+        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
+    )
+    sizes = set()
+    for line in result.stdout.splitlines():
+        line = line.strip()
+        if line.startswith("Size: Discrete"):
+            sizes.add(line.split()[-1])
+    if not sizes:
+        return list(FALLBACK_RESOLUTIONS)
+
+    def area(s):
+        w, h = s.split("x")
+        return int(w) * int(h)
+
+    return sorted(sizes, key=area, reverse=True)
+
+
 class TimelapseApp:
     def __init__(self, root):
         self.root = root
@@ -151,17 +173,27 @@ class TimelapseApp:
 
         ttk.Label(frm_settings, text="Camera device:").grid(row=row, column=0, sticky="w", **pad)
         devices = self._detect_devices() or ["/dev/video0"]
-        self.device_var = tk.StringVar(value=self.cfg.get("device", devices[0]))
-        ttk.Combobox(
+        default_device = self.cfg.get("device", devices[0])
+        if default_device not in devices:
+            default_device = devices[0]
+        self.device_var = tk.StringVar(value=default_device)
+        self.device_combo = ttk.Combobox(
             frm_settings, textvariable=self.device_var, values=devices, width=14, state="readonly"
-        ).grid(row=row, column=1, sticky="w", **pad)
+        )
+        self.device_combo.grid(row=row, column=1, sticky="w", **pad)
+        self.device_combo.bind("<<ComboboxSelected>>", self._on_device_changed)
         row += 1
 
         ttk.Label(frm_settings, text="Resolution:").grid(row=row, column=0, sticky="w", **pad)
-        self.res_var = tk.StringVar(value=self.cfg.get("resolution", RESOLUTIONS[1]))
-        ttk.Combobox(
-            frm_settings, textvariable=self.res_var, values=RESOLUTIONS, width=14, state="readonly"
-        ).grid(row=row, column=1, sticky="w", **pad)
+        resolutions = list_device_resolutions(default_device)
+        default_res = self.cfg.get("resolution")
+        if default_res not in resolutions:
+            default_res = resolutions[0]  # highest resolution this device supports
+        self.res_var = tk.StringVar(value=default_res)
+        self.res_combo = ttk.Combobox(
+            frm_settings, textvariable=self.res_var, values=resolutions, width=14, state="readonly"
+        )
+        self.res_combo.grid(row=row, column=1, sticky="w", **pad)
         row += 1
 
         ttk.Label(frm_settings, text="Interval (seconds):").grid(row=row, column=0, sticky="w", **pad)
@@ -247,6 +279,12 @@ class TimelapseApp:
                 if "Video Capture" in line:
                     return True
         return False
+
+    def _on_device_changed(self, _event=None):
+        resolutions = list_device_resolutions(self.device_var.get())
+        self.res_combo.config(values=resolutions)
+        if self.res_var.get() not in resolutions:
+            self.res_var.set(resolutions[0])
 
     def _choose_dir(self):
         d = filedialog.askdirectory(initialdir=self.outdir_var.get() or str(Path.home()))
