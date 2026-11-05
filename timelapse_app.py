@@ -223,7 +223,30 @@ class TimelapseApp:
         self.preview_label.pack(fill="both", expand=True, padx=8, pady=8)
 
     def _detect_devices(self):
-        return sorted(str(p) for p in Path("/dev").glob("video*"))
+        candidates = sorted(str(p) for p in Path("/dev").glob("video*"))
+        if shutil.which("v4l2-ctl") is None:
+            return candidates
+        capture_devices = [d for d in candidates if self._supports_video_capture(d)]
+        return capture_devices or candidates
+
+    def _supports_video_capture(self, device):
+        # "Capabilities" lists what the whole USB device can do; "Device Caps" lists what this
+        # specific /dev/videoN node exposes (UVC splits capture and metadata onto separate nodes).
+        result = subprocess.run(
+            ["v4l2-ctl", "--device", device, "--all"],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
+        )
+        in_device_caps = False
+        for line in result.stdout.splitlines():
+            if "Device Caps" in line:
+                in_device_caps = True
+                continue
+            if in_device_caps:
+                if not line.startswith("\t\t"):
+                    break
+                if "Video Capture" in line:
+                    return True
+        return False
 
     def _choose_dir(self):
         d = filedialog.askdirectory(initialdir=self.outdir_var.get() or str(Path.home()))
