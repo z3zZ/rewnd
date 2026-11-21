@@ -22,6 +22,7 @@ args = [
     "--name", "rewnd",
     "--add-data", f"rewnd/assets{sep}rewnd/assets",
     "--collect-binaries", "imageio_ffmpeg",
+    "--icon", "rewnd/assets/rewnd.ico",
     "--exclude-module", "tkinter",
     *[x for m in UNUSED_QT for x in ("--exclude-module", f"PySide6.{m}")],
     "rewnd/__main__.py",
