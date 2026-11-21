@@ -59,12 +59,34 @@ def test_orient_and_fit():
     assert out.mean() > 250  # crop slid fully left: all white
 
 
-def test_overlays_draw():
-    img = np.zeros((720, 1280, 3), np.uint8)
-    ov = dict(config.DEFAULTS["overlay"], clock=True, text="building inkd")
-    imaging.draw_overlays(img, ov, elapsed=3725, wall=imaging.wall_time(1_700_000_000))
-    assert img.mean() > 1
+def test_overlays_use_chosen_colour_everywhere():
+    """Every overlay (stopwatch, clock, caption, tag) is drawn in the chosen overlay colour."""
+    base = dict(config.DEFAULTS["overlay"], timer=False, clock=False, watermark=False, text="",
+                accent="#FF0000", pill_opacity=0.0)
+    for one in ({"timer": True}, {"clock": True}, {"text": "building inkd"}, {"watermark": True}):
+        img = np.zeros((720, 1280, 3), np.uint8)
+        imaging.draw_overlays(img, dict(base, **one), elapsed=3725, wall=imaging.wall_time(1_700_000_000))
+        red = (img[..., 2] > 200) & (img[..., 1] < 60) & (img[..., 0] < 60)
+        assert red.sum() > 50, one
     assert imaging.format_elapsed(3725) == "01:02:05"
+
+
+def test_toggle_animation_does_not_move_widget():
+    import os
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication, QWidget
+    app = QApplication.instance() or QApplication([])
+    from rewnd.ui.widgets import Toggle
+    host = QWidget()
+    t = Toggle(True)
+    t.setParent(host)
+    t.move(40, 30)
+    host.show()
+    t.setChecked(False)
+    end = time.time() + 0.4
+    while time.time() < end:
+        app.processEvents()
+    assert (t.x(), t.y()) == (40, 30)
 
 
 def test_export_target_vertical(tmp_path):

@@ -198,7 +198,7 @@ def _pill(text, kind, px, accent, opacity, dot=False, rewind_icon=False, wordmar
             d.text((x - left, ty), part, font=f, fill=col + (alpha,))
             x += f.getlength(part)
         return im
-    d.text((x - left, ty), text, font=f, fill=(240, 240, 240, alpha))
+    d.text((x - left, ty), text, font=f, fill=accent + (alpha,))
     return im
 
 
@@ -222,9 +222,9 @@ def overlay_items(ov, elapsed, wall):
                       dict(text=format_elapsed(elapsed), kind="mono", dot=True)))
     if ov.get("clock"):
         stamp = wall.strftime("%a %d %b · %H:%M") if wall else ""
-        items.append((ov.get("clock_position", "top-right"), dict(text=stamp, kind="mono")))
+        items.append((ov.get("clock_position", "top-right"), dict(text=stamp, kind="mono", dot=True)))
     if ov.get("text"):
-        items.append((ov.get("text_position", "bottom-left"), dict(text=ov["text"], kind="sans")))
+        items.append((ov.get("text_position", "bottom-left"), dict(text=ov["text"], kind="sans", dot=True)))
     if ov.get("watermark"):
         items.append((ov.get("watermark_position", "bottom-right"),
                       dict(text="rewnd", kind="mono", rewind_icon=True, wordmark=True, small=True)))

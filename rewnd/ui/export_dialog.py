@@ -197,7 +197,7 @@ class ExportDialog(QDialog):
             img = cv2.imread(str(self.frames[i]))
             if img is not None:
                 h, w = img.shape[:2]
-                k = 900 / min(w, h)
+                k = 1080 / min(w, h)
                 if k < 1:
                     img = cv2.resize(img, (int(w * k), int(h * k)), interpolation=cv2.INTER_AREA)
             if len(self._raw_cache) > 24:
@@ -216,9 +216,18 @@ class ExportDialog(QDialog):
         ts = self.stamps.get(int(m.group(1))) if m else None
         elapsed = (ts - self.t0) if (ts and self.t0) else 0.0
         img = imaging.render(raw, self.look, self.exp, self.ov, elapsed=elapsed,
-                             wall=imaging.wall_time(ts), size=720)
+                             wall=imaging.wall_time(ts), size=self._preview_size())
         self.preview.set_image(cv_to_qimage(img))
         self.frame_label.setText(f"{i + 1} / {len(self.frames)}")
+
+    def _preview_size(self):
+        dpr = self.preview.devicePixelRatioF() or 1.0
+        short = min(self.preview.width(), self.preview.height()) * dpr
+        return int(max(360, min(1080, short)))
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        self._debounce.start(60)
 
     def _save_defaults(self):
         self.saved_defaults.emit(copy.deepcopy(self.look), copy.deepcopy(self.exp), copy.deepcopy(self.ov))

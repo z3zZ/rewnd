@@ -15,7 +15,6 @@ from rewnd.ui import forms, theme
 from rewnd.ui.widgets import (Chips, PreviewView, RecordButton, Section, Segmented, StatusPill,
                               cv_to_qimage, label)
 
-PREVIEW_SHORT_SIDE = 540
 
 
 def fmt_duration(sec):
@@ -417,16 +416,26 @@ class RecordPage(QWidget):
         self._last_ts = ts
         self._force = False
         h, w = frame.shape[:2]
-        k = 720 / min(w, h)
+        k = 1080 / min(w, h)
         if k < 1:
             frame = cv2.resize(frame, (int(w * k), int(h * k)), interpolation=cv2.INTER_AREA)
         elapsed = (time.time() - self.rec_started) if (rec and self.rec_started) else 0.0
         try:
             img = imaging.render(frame, self.cfg["look"], self.cfg["export"], self.cfg["overlay"],
-                                 elapsed=elapsed, wall=imaging.wall_time(ts), size=PREVIEW_SHORT_SIDE)
+                                 elapsed=elapsed, wall=imaging.wall_time(ts), size=self._preview_size())
         except Exception:
             return
         self.preview.set_image(cv_to_qimage(img))
+
+    def _preview_size(self):
+        """Short side to render at: what the preview box can show on this screen, capped at 1080."""
+        dpr = self.preview.devicePixelRatioF() or 1.0
+        short = min(self.preview.width(), self.preview.height()) * dpr
+        return int(max(360, min(1080, short)))
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        self._force = True
 
     def refresh_disk(self):
         free = free_space(self.cfg["capture"]["output_root"])

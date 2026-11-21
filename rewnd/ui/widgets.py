@@ -74,7 +74,7 @@ class Toggle(QAbstractButton):
         self.setFixedSize(32, 22)
         self.accent = accent
         self._pos = 1.0 if checked else 0.0
-        self._anim = QPropertyAnimation(self, b"pos", self)
+        self._anim = QPropertyAnimation(self, b"knob", self)
         self._anim.setDuration(140)
         self._anim.setEasingCurve(QEasingCurve.OutCubic)
         self.toggled.connect(self._animate)
@@ -85,14 +85,15 @@ class Toggle(QAbstractButton):
         self._anim.setEndValue(1.0 if on else 0.0)
         self._anim.start()
 
-    def _get_pos(self):
+    def _get_knob(self):
         return self._pos
 
-    def _set_pos(self, v):
+    def _set_knob(self, v):
         self._pos = v
         self.update()
 
-    pos = Property(float, _get_pos, _set_pos)
+    # Not "pos": that name is QWidget's position, and animating it moved the toggle around.
+    knob = Property(float, _get_knob, _set_knob)
 
     def sizeHint(self):
         return QSize(32, 22)
