@@ -175,8 +175,7 @@ def _pill(text, kind, px, accent, opacity, dot=False, rewind_icon=False, wordmar
     h = int(px + pad_y * 2)
     im = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     d = ImageDraw.Draw(im)
-    d.rounded_rectangle([0, 0, w - 1, h - 1], radius=h / 2, fill=(13, 13, 13, int(255 * opacity)),
-                        outline=(255, 255, 255, int(40 * min(1.0, opacity * 1.6))), width=max(1, int(px * 0.04)))
+    d.rounded_rectangle([0, 0, w - 1, h - 1], radius=h / 2, fill=(0, 0, 0, int(255 * opacity)))
     x = pad_x
     cy = h / 2
     if dot:

@@ -147,6 +147,7 @@ class ExportDialog(QDialog):
         fl.addWidget(self.bar)
         self.result_row = QHBoxLayout()
         self.result_label = label("", "Mono")
+        self.result_label.hide()
         self.result_row.addWidget(self.result_label, 1)
         self.play_btn = QPushButton("play")
         self.show_btn = QPushButton("show in folder")
@@ -217,8 +218,6 @@ class ExportDialog(QDialog):
         img = imaging.render(raw, self.look, self.exp, self.ov, elapsed=elapsed,
                              wall=imaging.wall_time(ts), size=720)
         self.preview.set_image(cv_to_qimage(img))
-        tiny = cv2.resize(img, (48, max(8, int(48 * img.shape[0] / img.shape[1]))), interpolation=cv2.INTER_AREA)
-        self.backdrop.set_ambient(cv_to_qimage(cv2.GaussianBlur(tiny, (0, 0), 2.2)))
         self.frame_label.setText(f"{i + 1} / {len(self.frames)}")
 
     def _save_defaults(self):
@@ -244,6 +243,7 @@ class ExportDialog(QDialog):
         self.play_btn.hide()
         self.show_btn.hide()
         self.result_label.setText("rendering…")
+        self.result_label.show()
         self.export_btn.setText("cancel")
         self.export_btn.setObjectName("")
         self.export_btn.setStyle(self.export_btn.style())

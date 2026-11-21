@@ -10,43 +10,18 @@ from rewnd.ui import theme
 
 
 class GlassBackdrop(QWidget):
-    """Window background: near-black, a faint lime glow, and optionally a heavily blurred,
-    darkened copy of the live camera feed. The translucent glass panels sit on top of this,
-    which is what makes them read as glass rather than flat grey cards."""
+    """Plain deep-black window background."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.ambient = None
         self.setAttribute(Qt.WA_StyledBackground, False)
 
-    def set_ambient(self, qimg):
-        self.ambient = qimg
-        self.update()
+    def set_ambient(self, _):
+        pass
 
     def paintEvent(self, e):
-        from PySide6.QtGui import QRadialGradient, QLinearGradient
         p = QPainter(self)
-        p.setClipRegion(e.region())
-        r = QRectF(self.rect())
-        p.fillRect(r, QColor(theme.BASE))
-        if self.ambient is not None and not self.ambient.isNull():
-            p.setRenderHint(QPainter.SmoothPixmapTransform)
-            p.setOpacity(0.38)
-            iw, ih = self.ambient.width(), self.ambient.height()
-            k = max(r.width() / iw, r.height() / ih) * 1.15
-            w, h = iw * k, ih * k
-            p.drawImage(QRectF((r.width() - w) / 2, (r.height() - h) / 2, w, h), self.ambient)
-            p.setOpacity(1.0)
-            fade = QLinearGradient(0, 0, 0, r.height())
-            fade.setColorAt(0.0, theme.qcolor(theme.BASE, 150))
-            fade.setColorAt(0.5, theme.qcolor(theme.BASE, 90))
-            fade.setColorAt(1.0, theme.qcolor(theme.BASE, 190))
-            p.fillRect(r, fade)
-        for cx, cy, rad, alpha in ((0.08, -0.15, 0.55, 26), (1.0, 1.1, 0.5, 16)):
-            g = QRadialGradient(QPointF(r.width() * cx, r.height() * cy), max(r.width(), r.height()) * rad)
-            g.setColorAt(0.0, theme.qcolor(theme.ACCENT, alpha))
-            g.setColorAt(1.0, theme.qcolor(theme.ACCENT, 0))
-            p.fillRect(r, g)
+        p.fillRect(e.rect(), QColor(theme.BASE))
 
 
 def hline():
@@ -126,11 +101,11 @@ class Toggle(QAbstractButton):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
         t = self._pos
-        border = theme.qcolor(self.accent, 150) if t > 0.5 else QColor(255, 255, 255, 40)
+        border = QColor(self.accent) if t > 0.5 else QColor("#333333")
         if not self.isEnabled():
-            border.setAlpha(60)
+            border.setAlpha(80)
         p.setPen(QPen(border, 1))
-        p.setBrush(theme.qcolor(self.accent, 28) if t > 0.5 else QColor(255, 255, 255, 12))
+        p.setBrush(QColor(theme.BASE))
         p.drawRoundedRect(QRectF(0.5, 2.5, 31, 17), 8.5, 8.5)
         p.setPen(Qt.NoPen)
         knob = QColor(self.accent) if t > 0.5 else QColor(theme.TEXT_2)
@@ -323,8 +298,8 @@ class RecordButton(QAbstractButton):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
         r = QRectF(3, 3, 70, 70)
-        p.setPen(QPen(QColor(255, 255, 255, 34), 2))
-        p.setBrush(QColor(255, 255, 255, 10))
+        p.setPen(QPen(QColor("#262626"), 2))
+        p.setBrush(QColor(theme.BASE))
         p.drawEllipse(r)
         lime = QColor(self.accent)
         if self.recording:
@@ -377,9 +352,9 @@ class PreviewView(QWidget):
         p.setRenderHint(QPainter.SmoothPixmapTransform)
         if self.image is None or self.image.isNull():
             r = QRectF(self.rect()).adjusted(1, 1, -1, -1)
-            p.setPen(QPen(QColor(255, 255, 255, 22), 1))
-            p.setBrush(QColor(255, 255, 255, 8))
-            p.drawRoundedRect(r, 14, 14)
+            p.setPen(QPen(QColor(theme.BORDER), 1))
+            p.setBrush(QColor(theme.SURFACE))
+            p.drawRoundedRect(r, 10, 10)
             p.setPen(QColor(theme.TEXT_2))
             f = QFont(theme.MONO, 12)
             p.setFont(f)
@@ -391,7 +366,7 @@ class PreviewView(QWidget):
             return
         r = self.image_rect()
         path = QPainterPath()
-        path.addRoundedRect(r, 14, 14)
+        path.addRoundedRect(r, 10, 10)
         p.setClipPath(path)
         p.drawImage(r, self.image)
         p.setClipping(False)
@@ -399,8 +374,8 @@ class PreviewView(QWidget):
         if self.rec:
             p.setPen(QPen(theme.qcolor(theme.ACCENT, 210), 1.5))
         else:
-            p.setPen(QPen(QColor(255, 255, 255, 30), 1))
-        p.drawRoundedRect(r.adjusted(0.5, 0.5, -0.5, -0.5), 14, 14)
+            p.setPen(QPen(QColor(theme.BORDER), 1))
+        p.drawRoundedRect(r.adjusted(0.5, 0.5, -0.5, -0.5), 10, 10)
         if self.message and self.sub == "overlay":
             p.fillRect(r, QColor(0, 0, 0, 140))
             p.setPen(QColor(theme.TEXT))

@@ -7,10 +7,10 @@ from pathlib import Path
 from PySide6.QtGui import QColor, QFontDatabase
 
 # klokd tokens
-BASE = "#0D0D0D"
-SURFACE = "#1A1A1A"
-RAISED = "#2A2A2A"
-BORDER = "#2A2A2A"
+BASE = "#000000"       # deep black
+SURFACE = "#0D0D0D"    # panels (klokd base)
+RAISED = "#161616"
+BORDER = "#1F1F1F"
 TEXT = "#F0F0F0"
 TEXT_2 = "#888888"
 TEXT_3 = "#444444"
@@ -61,18 +61,18 @@ def wordmark_html(size=15):
             f' letter-spacing:-0.3px;">r<span style="color:{ACCENT};">e</span>wnd</span>')
 
 
-# Dark glass: translucent fill, brighter top edge fading down the sides.
-GLASS_FILL = "qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 rgba(255,255,255,0.070), stop:1 rgba(255,255,255,0.025))"
-GLASS_EDGE = "qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 rgba(255,255,255,0.20), stop:0.35 rgba(255,255,255,0.07), stop:1 rgba(255,255,255,0.04))"
-GLASS_FIELD = "rgba(255,255,255,0.045)"
-HAIRLINE = "rgba(255,255,255,0.07)"
+# Flat and solid: no gradients, no translucency.
+GLASS_FILL = SURFACE
+GLASS_EDGE = BORDER
+GLASS_FIELD = "#111111"
+HAIRLINE = BORDER
 
 
 def stylesheet(accent=ACCENT):
     chevron = (ICON_DIR / "chevron-down.svg").as_posix()
     a = QColor(accent)
-    lime_soft = f"rgba({a.red()},{a.green()},{a.blue()},0.11)"
-    lime_edge = f"rgba({a.red()},{a.green()},{a.blue()},0.45)"
+    lime_soft = RAISED
+    lime_edge = accent
     return f"""
 * {{
     font-family: "{UI_FONT}", "Inter";
@@ -95,23 +95,23 @@ QLabel#StatKey {{ font-family: "{MONO}"; font-size: 20px; font-weight: 700; colo
 QLabel#Mono {{ font-family: "{MONO}"; color: {TEXT_2}; font-size: 11px; }}
 QLabel#FieldLabel {{ color: {TEXT_2}; font-size: 12px; }}
 
-QFrame#Toast {{ background: rgba(24,24,24,0.94); border: 1px solid {GLASS_EDGE}; border-radius: 14px; }}
-QFrame#Card, QFrame#Glass {{ background: {GLASS_FILL}; border: 1px solid {GLASS_EDGE}; border-radius: 14px; }}
+QFrame#Toast {{ background: {SURFACE}; border: 1px solid {BORDER}; border-left: 2px solid {accent}; border-radius: 10px; }}
+QFrame#Card, QFrame#Glass {{ background: {SURFACE}; border: 1px solid {BORDER}; border-radius: 10px; }}
 QFrame#Section {{ background: transparent; border: none; border-bottom: 1px solid {HAIRLINE}; border-radius: 0; }}
 QFrame#Divider {{ background: {BORDER}; max-height: 1px; min-height: 1px; border: none; }}
-QFrame#TopBar {{ background: rgba(13,13,13,0.55); border-bottom: 1px solid {HAIRLINE}; }}
-QFrame#SidePanel {{ background: {GLASS_FILL}; border: 1px solid {GLASS_EDGE}; border-radius: 16px; }}
+QFrame#TopBar {{ background: {BASE}; border-bottom: 1px solid {BORDER}; }}
+QFrame#SidePanel {{ background: {SURFACE}; border: 1px solid {BORDER}; border-radius: 10px; }}
 QFrame#StatusPill {{ background: {GLASS_FIELD}; border: 1px solid {HAIRLINE}; border-radius: 11px; }}
 
 QPushButton {{
     background: {GLASS_FIELD}; border: 1px solid {HAIRLINE}; border-radius: 8px;
     padding: 6px 12px; color: {TEXT_2}; font-size: 12px;
 }}
-QPushButton:hover {{ color: {TEXT}; border-color: rgba(255,255,255,0.16); background: rgba(255,255,255,0.07); }}
-QPushButton:pressed {{ background: rgba(255,255,255,0.03); }}
+QPushButton:hover {{ color: {TEXT}; border-color: #333333; background: {RAISED}; }}
+QPushButton:pressed {{ background: {BASE}; }}
 QPushButton:disabled {{ color: {TEXT_3}; }}
-QPushButton#Primary {{ background: {TEXT}; color: {BASE}; border: none; font-weight: 600; }}
-QPushButton#Primary:hover {{ background: #ffffff; }}
+QPushButton#Primary {{ background: {accent}; color: {BASE}; border: none; font-weight: 600; }}
+QPushButton#Primary:hover {{ background: {a.lighter(108).name()}; }}
 QPushButton#Primary:disabled {{ background: {RAISED}; color: {TEXT_3}; }}
 QPushButton#Ghost {{ background: transparent; border: none; color: {TEXT_2}; padding: 5px 8px; }}
 QPushButton#Ghost:hover {{ color: {TEXT}; }}
@@ -120,7 +120,7 @@ QPushButton#Tab {{
     padding: 5px 16px; font-size: 12px;
 }}
 QPushButton#Tab:hover {{ color: {TEXT_2}; background: transparent; border-color: {HAIRLINE}; }}
-QPushButton#Tab:checked {{ color: {TEXT}; background: {GLASS_FIELD}; border-color: rgba(255,255,255,0.12); }}
+QPushButton#Tab:checked {{ color: {accent}; background: {BASE}; border-color: {BORDER}; }}
 QFrame#SegBox {{ background: {GLASS_FIELD}; border: 1px solid {HAIRLINE}; border-radius: 8px; }}
 QPushButton#Seg {{
     background: transparent; border: none; border-radius: 6px; color: {TEXT_DIM};
@@ -133,7 +133,7 @@ QPushButton#Chip {{
     padding: 3px 10px; font-family: "{MONO}"; font-size: 11px; color: {TEXT_DIM};
 }}
 QPushButton#Chip:hover {{ color: {TEXT_2}; }}
-QPushButton#Chip:checked {{ border-color: {lime_edge}; color: {accent}; background: {lime_soft}; }}
+QPushButton#Chip:checked {{ border-color: {accent}; color: {accent}; background: {GLASS_FIELD}; }}
 QPushButton#SectionHeader {{
     background: transparent; border: none; text-align: left; padding: 14px 2px 10px 2px;
     font-size: 10px; font-weight: 600; letter-spacing: 1px; color: {TEXT_DIM};
@@ -145,29 +145,29 @@ QComboBox, QLineEdit, QSpinBox, QDoubleSpinBox {{
     padding: 5px 9px; font-size: 12px; selection-background-color: {RAISED};
 }}
 QSpinBox, QDoubleSpinBox {{ font-family: "{MONO}"; font-size: 11px; }}
-QComboBox:hover, QLineEdit:hover, QSpinBox:hover, QDoubleSpinBox:hover {{ border-color: rgba(255,255,255,0.16); }}
+QComboBox:hover, QLineEdit:hover, QSpinBox:hover, QDoubleSpinBox:hover {{ border-color: #333333; }}
 QComboBox:focus, QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus {{ border-color: {lime_edge}; }}
 QComboBox::drop-down {{ border: none; width: 22px; }}
 QComboBox::down-arrow {{ image: url("{chevron}"); width: 12px; height: 12px; margin-right: 8px; }}
-QComboBox QAbstractItemView {{ background: #161616; border: 1px solid rgba(255,255,255,0.10); border-radius: 8px;
+QComboBox QAbstractItemView {{ background: {SURFACE}; border: 1px solid {BORDER}; border-radius: 8px;
     padding: 4px; selection-background-color: {RAISED}; selection-color: {TEXT}; }}
 QSpinBox::up-button, QSpinBox::down-button, QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {{ width: 0; border: none; }}
 
-QSlider::groove:horizontal {{ height: 2px; background: rgba(255,255,255,0.10); border-radius: 1px; }}
+QSlider::groove:horizontal {{ height: 2px; background: {RAISED}; border-radius: 1px; }}
 QSlider::sub-page:horizontal {{ background: {accent}; border-radius: 1px; }}
 QSlider::handle:horizontal {{ background: {TEXT}; width: 10px; height: 10px; margin: -4px 0; border-radius: 5px; }}
 
-QProgressBar {{ background: rgba(255,255,255,0.08); border: none; border-radius: 2px; height: 4px; color: transparent; }}
+QProgressBar {{ background: {RAISED}; border: none; border-radius: 2px; height: 4px; color: transparent; }}
 QProgressBar::chunk {{ background: {accent}; border-radius: 2px; }}
 
 QScrollBar:vertical {{ background: transparent; width: 6px; margin: 2px; }}
-QScrollBar::handle:vertical {{ background: rgba(255,255,255,0.10); border-radius: 2px; min-height: 30px; }}
+QScrollBar::handle:vertical {{ background: {RAISED}; border-radius: 2px; min-height: 30px; }}
 QScrollBar::add-line, QScrollBar::sub-line, QScrollBar::add-page, QScrollBar::sub-page {{ background: none; height: 0; }}
 QScrollBar:horizontal {{ height: 0; }}
 
 QMessageBox, QInputDialog {{ background: {SURFACE}; }}
-QMenu {{ background: #161616; border: 1px solid rgba(255,255,255,0.10); border-radius: 8px; padding: 4px; }}
+QMenu {{ background: {SURFACE}; border: 1px solid {BORDER}; border-radius: 8px; padding: 4px; }}
 QMenu::item {{ padding: 5px 14px; border-radius: 4px; color: {TEXT_2}; }}
-QMenu::item:selected {{ background: rgba(255,255,255,0.07); color: {TEXT}; }}
+QMenu::item:selected {{ background: {RAISED}; color: {TEXT}; }}
 QMenu::separator {{ height: 1px; background: {BORDER}; margin: 4px 6px; }}
 """

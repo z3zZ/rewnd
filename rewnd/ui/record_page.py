@@ -427,12 +427,6 @@ class RecordPage(QWidget):
         except Exception:
             return
         self.preview.set_image(cv_to_qimage(img))
-        now = time.time()
-        if now - self._last_ambient > 0.8:
-            self._last_ambient = now
-            tiny = cv2.resize(img, (48, max(8, int(48 * img.shape[0] / img.shape[1]))), interpolation=cv2.INTER_AREA)
-            tiny = cv2.GaussianBlur(tiny, (0, 0), 2.2)
-            self.ambient_changed.emit(cv_to_qimage(tiny))
 
     def refresh_disk(self):
         free = free_space(self.cfg["capture"]["output_root"])

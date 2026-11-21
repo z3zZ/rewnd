@@ -86,6 +86,6 @@ python -m pytest
 REWND_FAKE_CAMERA=1 python -m rewnd   # run with a demo camera, no webcam needed
 ```
 
-Design follows the klokd / errnd family: near-black glass, JetBrains Mono, lime `#C8F135` accents.
+Design follows the klokd / errnd family: flat deep black, JetBrains Mono, lime `#C8F135` accents.
 
 Fonts: [Inter](https://rsms.me/inter/) and [JetBrains Mono](https://www.jetbrains.com/lp/mono/), both under the SIL Open Font License (see `rewnd/assets/fonts`).
