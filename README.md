@@ -27,7 +27,7 @@ Point any webcam at your desk, hit record, and work. rewnd takes a shot every fe
 
 You need **Python 3.9+** ([python.org](https://www.python.org/downloads/); on Windows tick *Add Python to PATH*). ffmpeg comes bundled, so there's nothing else to install.
 
-**Windows:** download or clone the repo, then double-click **`run.bat`**.
+**Windows:** download or clone the repo, then double-click **`run.bat`**, or run `.\run.bat` from PowerShell in the repo folder.
 
 **Linux / macOS:**
 
