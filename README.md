@@ -11,7 +11,8 @@ Point any webcam at your desk, hit record, and work. rewnd takes a shot every fe
 - **Live preview that matches the export.** What you see while recording (crop, colour, overlays) is exactly what the video looks like.
 - **One-click vertical video.** 9:16, 1:1, 4:5 or 16:9, cropped to fill (with a slider to choose what's in frame) or fitted over a blurred copy of the shot.
 - **Fit to length.** Recorded for 6 hours? Ask for a 30 second video and rewnd picks the frames for you. No more speeding up and dropping frames by hand. Or use every frame at 24, 30 or 60 fps.
-- **Overlays.** A real-time stopwatch, the time of day, your own caption, and a small rewnd tag. Pick the corner, size, colour and background for each.
+- **Overlays.** A real-time stopwatch, the time of day, your own caption, and a small rewnd tag. Pick the corner, size and background, plus a primary colour (dots and icons) and a secondary colour (text) from a colour wheel.
+- **Three themes.** *black* (flat deep black and lime), *light* (its inverse) and *aero* (glossy Frutiger Aero glass), plus any accent colour from the wheel in the top bar.
 - **Fix the camera, not just the video.** Mirror (for webcams that flip you), upside down, rotate, brightness, contrast, saturation, warmth. All of it is non-destructive, so you can change your mind and re-export later.
 - **Camera control.** Autofocus and auto exposure on or off, a low-light boost, and on Windows the camera's own driver settings window.
 - **Doesn't drop out.** The camera stays open for the whole session and reconnects by itself if it disconnects. Stable USB mode (MJPEG) keeps bandwidth low on hubs and long USB extension cables.

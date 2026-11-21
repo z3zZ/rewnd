@@ -5,7 +5,6 @@ from pathlib import Path
 
 import cv2
 from PySide6.QtCore import Qt, QTimer, Signal
-from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (QComboBox, QDoubleSpinBox, QFileDialog, QFrame, QHBoxLayout,
                                QPushButton, QScrollArea, QVBoxLayout, QWidget)
 
@@ -161,7 +160,8 @@ class RecordPage(QWidget):
         self.cam_combo = QComboBox()
         self.cam_combo.currentIndexChanged.connect(self._on_camera_pick)
         refresh = QPushButton()
-        refresh.setIcon(QIcon(str(theme.ICON_DIR / "refresh.svg")))
+        refresh.setIcon(theme.icon("refresh"))
+        self.refresh_btn = refresh
         refresh.setToolTip("Look for cameras again")
         refresh.setFixedWidth(36)
         refresh.clicked.connect(self.refresh_cameras)
@@ -345,7 +345,7 @@ class RecordPage(QWidget):
             if rec:
                 self.status.set("rec", theme.ACCENT, blink=True)
             else:
-                self.status.set("live", self.accent)
+                self.status.set("live", theme.ACCENT)
             self.preview.set_message("", "")
         elif state in ("connecting",):
             self.status.set("connecting", theme.TEXT_2)
@@ -381,7 +381,7 @@ class RecordPage(QWidget):
         if rec:
             self.status.set("rec", theme.ACCENT, blink=True)
         elif self.engine.status == "live":
-            self.status.set("live", self.accent)
+            self.status.set("live", theme.ACCENT)
         self._force = True
 
     def on_shot(self, idx):
@@ -435,6 +435,10 @@ class RecordPage(QWidget):
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
+        self._force = True
+
+    def retheme(self):
+        self.refresh_btn.setIcon(theme.icon("refresh"))
         self._force = True
 
     def refresh_disk(self):

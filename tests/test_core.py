@@ -159,3 +159,28 @@ def test_engine_records_with_fake_camera(tmp_path, monkeypatch):
     assert len(shots) >= 3
     assert len(s.frames()) == len(shots) and len(s.timestamps()) == len(shots)
     assert cv2.imread(str(s.frames()[0])).shape == (720, 1280, 3)
+
+
+def test_themes_apply_and_keep_accent_readable():
+    from rewnd.ui import theme
+    from PySide6.QtGui import QColor
+    for name in theme.THEME_NAMES:
+        theme.apply(name, "#C8F135")
+        assert theme.NAME == name and theme.TEXT and theme.BASE
+        css = theme.stylesheet()
+        assert "QPushButton#Primary" in css
+        if not theme.DARK:  # lime text would vanish on white, so it is darkened
+            assert theme._luminance(QColor(theme.ACCENT_TEXT)) <= 0.2
+    theme.apply("black", "#C8F135")
+    assert theme.ACCENT_TEXT == "#c8f135"
+
+
+def test_primary_and_secondary_overlay_colours():
+    """Primary colours the dot, secondary colours the text."""
+    ov = dict(config.DEFAULTS["overlay"], timer=True, clock=False, watermark=False, text="",
+              accent="#FF0000", text_color="#0000FF", pill_opacity=0.0)
+    img = np.zeros((720, 1280, 3), np.uint8)
+    imaging.draw_overlays(img, ov, elapsed=61)
+    red = (img[..., 2] > 200) & (img[..., 1] < 60) & (img[..., 0] < 60)
+    blue = (img[..., 0] > 200) & (img[..., 1] < 60) & (img[..., 2] < 60)
+    assert red.sum() > 20 and blue.sum() > 100

@@ -65,7 +65,8 @@ DEFAULTS = {
         "watermark": True,
         "watermark_position": "bottom-right",
         "scale": 1.0,                # overlay size multiplier
-        "accent": "#C8F135",
+        "accent": "#C8F135",         # primary: dots and icons
+        "text_color": "#C8F135",     # secondary: overlay text
         "pill_opacity": 0.55,
     },
     "export": {
@@ -81,6 +82,7 @@ DEFAULTS = {
         "hold_end": 1.5,             # seconds to hold the final frame
     },
     "ui": {
+        "theme": "black",            # black | light | aero
         "accent": "#C8F135",
     },
 }

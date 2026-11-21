@@ -18,7 +18,7 @@ def app_icon(accent):
     p = QPainter(pm)
     p.setRenderHint(QPainter.Antialiasing)
     p.setPen(Qt.NoPen)
-    p.setBrush(QColor(theme.BASE))
+    p.setBrush(QColor("#000000"))
     p.drawRoundedRect(0, 0, 256, 256, 56, 56)
     pen = QPen(QColor(accent), 26)
     pen.setCapStyle(Qt.RoundCap)
@@ -70,7 +70,8 @@ def main():
     theme.load_fonts()
     app.setFont(QFont("Inter", 10))
     cfg = config.load()
-    app.setStyleSheet(theme.stylesheet(cfg["ui"]["accent"]))
+    theme.apply(cfg["ui"].get("theme", "black"), cfg["ui"].get("accent", theme.DEFAULT_ACCENT))
+    app.setStyleSheet(theme.stylesheet())
     app.setWindowIcon(app_icon(cfg["ui"]["accent"]))
 
     from rewnd.ui.main_window import MainWindow

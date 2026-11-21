@@ -38,14 +38,14 @@ class Thumb(QWidget):
         path = QPainterPath()
         path.addRoundedRect(r, 6, 6)
         p.setClipPath(path)
-        p.fillRect(r, theme.qcolor(theme.SURFACE_2))
+        p.fillRect(r, theme.qcolor(theme.RAISED))
         if self.img is not None:
             iw, ih = self.img.width(), self.img.height()
             k = max(r.width() / iw, r.height() / ih)
             w, h = iw * k, ih * k
             p.drawImage(QRectF((r.width() - w) / 2, (r.height() - h) / 2, w, h), self.img)
         else:
-            p.setPen(theme.qcolor(theme.FAINT))
+            p.setPen(theme.qcolor(theme.TEXT_3))
             p.drawText(r, Qt.AlignCenter, "no frames")
 
 

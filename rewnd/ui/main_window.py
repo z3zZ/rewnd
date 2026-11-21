@@ -5,7 +5,7 @@ import time
 from PySide6.QtCore import QObject, Qt, QTimer, Signal
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (QButtonGroup, QFrame, QHBoxLayout, QMainWindow, QMessageBox, QPushButton,
-                               QStackedWidget, QVBoxLayout)
+                               QStackedWidget, QVBoxLayout, QWidget)
 
 from rewnd import APP_NAME, __version__, config
 from rewnd.camera import CaptureEngine, find_camera, list_cameras
@@ -15,7 +15,8 @@ from rewnd.ui.export_dialog import ExportDialog, ExportJob, Relay
 from rewnd.ui.library_page import LibraryPage
 from rewnd.ui.record_page import RecordPage
 from rewnd.ui import theme
-from rewnd.ui.widgets import GlassBackdrop, Logo, Toast, Wordmark, label
+from rewnd.ui.colour import ColourButton
+from rewnd.ui.widgets import GlassBackdrop, Logo, Segmented, Toast, Wordmark, label
 
 
 class EngineBridge(QObject):
@@ -99,12 +100,14 @@ class MainWindow(QMainWindow):
         h = QHBoxLayout(bar)
         h.setContentsMargins(20, 0, 20, 0)
         h.setSpacing(10)
-        h.addWidget(Logo(18, self.accent))
-        h.addWidget(Wordmark(15))
+        self.logo = Logo(18)
+        h.addWidget(self.logo)
+        self.wordmark = Wordmark(15)
+        h.addWidget(self.wordmark)
         h.addSpacing(10)
-        tag = label(f'your hours, <span style="color:{theme.ACCENT};">rewound.</span>', "Tagline")
-        tag.setTextFormat(Qt.RichText)
-        h.addWidget(tag)
+        self.tagline = label(theme.tagline_html(), "Tagline")
+        self.tagline.setTextFormat(Qt.RichText)
+        h.addWidget(self.tagline)
         h.addStretch(1)
         self.tabs = QButtonGroup(self)
         for i, text in enumerate(("record", "library")):
@@ -117,12 +120,46 @@ class MainWindow(QMainWindow):
         self.tabs.button(0).setChecked(True)
         self.tabs.idClicked.connect(self.go)
         h.addStretch(1)
+        self.theme_switch = Segmented([("black", "black"), ("light", "light"), ("aero", "aero")],
+                                      self.cfg["ui"].get("theme", "black"))
+        self.theme_switch.setFixedSize(180, 30)
+        self.theme_switch.setToolTip("App theme")
+        self.theme_switch.changed.connect(self.set_theme)
+        h.addWidget(self.theme_switch)
+        self.accent_btn = ColourButton(self.cfg["ui"].get("accent", theme.DEFAULT_ACCENT))
+        self.accent_btn.setToolTip("App accent colour")
+        self.accent_btn.changed.connect(self.set_accent)
+        h.addWidget(self.accent_btn)
+        h.addSpacing(10)
         self.clock = label("", "Mono")
         h.addWidget(self.clock)
         h.addSpacing(8)
         h.addWidget(label(f"v{__version__}", "Faint"))
         self._update_clock()
         return bar
+
+    def set_theme(self, name):
+        self.cfg["ui"]["theme"] = name
+        self.retheme()
+
+    def set_accent(self, hx):
+        self.cfg["ui"]["accent"] = hx
+        self.retheme()
+
+    def retheme(self):
+        """Apply the theme/accent live: new stylesheet, then refresh the few hand-styled pieces."""
+        from PySide6.QtWidgets import QApplication
+        theme.apply(self.cfg["ui"].get("theme", "black"), self.cfg["ui"].get("accent", theme.DEFAULT_ACCENT))
+        QApplication.instance().setStyleSheet(theme.stylesheet())
+        self.wordmark.retheme()
+        self.logo.update()
+        self.record.retheme()
+        self.tagline.setText(theme.tagline_html())
+        self.backdrop.retheme()
+        self.record.set_status(self.engine.status)
+        for w in self.findChildren(QWidget):
+            w.update()
+        self._schedule_save()
 
     def _update_clock(self):
         self.clock.setText(time.strftime("%H:%M"))

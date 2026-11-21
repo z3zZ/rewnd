@@ -10,18 +10,73 @@ from rewnd.ui import theme
 
 
 class GlassBackdrop(QWidget):
-    """Plain deep-black window background."""
+    """Window background. Flat for black and light; for aero, a sky gradient with soft bubbles
+    and a green glow, which is what the translucent glass panels sit on."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setAttribute(Qt.WA_StyledBackground, False)
+        self._cache = None
 
     def set_ambient(self, _):
         pass
 
+    def retheme(self):
+        self._cache = None
+        self.update()
+
+    def _aero(self, w, h):
+        from PySide6.QtGui import QLinearGradient, QPixmap, QRadialGradient
+        pm = QPixmap(w, h)
+        p = QPainter(pm)
+        p.setRenderHint(QPainter.Antialiasing)
+        sky = QLinearGradient(0, 0, 0, h)
+        sky.setColorAt(0.0, QColor("#7FC8F8"))
+        sky.setColorAt(0.45, QColor("#C9E9FF"))
+        sky.setColorAt(0.78, QColor("#EEF9FF"))
+        sky.setColorAt(1.0, QColor("#D6F3DA"))
+        p.fillRect(0, 0, w, h, sky)
+        acc = theme.qcolor(theme.ACCENT)
+        for cx, cy, rad, col, al in ((0.12, 1.05, 0.55, acc, 120), (0.95, -0.1, 0.45, QColor("#FFFFFF"), 200),
+                                    (0.75, 0.95, 0.35, QColor("#7FE0C8"), 110)):
+            g = QRadialGradient(QPointF(w * cx, h * cy), max(w, h) * rad)
+            c0 = QColor(col)
+            c0.setAlpha(al)
+            c1 = QColor(col)
+            c1.setAlpha(0)
+            g.setColorAt(0, c0)
+            g.setColorAt(1, c1)
+            p.fillRect(0, 0, w, h, g)
+        # bubbles: soft rim, bright highlight top-left
+        for fx, fy, fr in ((0.07, 0.30, 0.050), (0.18, 0.80, 0.028), (0.42, 0.12, 0.020), (0.63, 0.88, 0.040),
+                           (0.86, 0.42, 0.026), (0.93, 0.78, 0.060), (0.30, 0.55, 0.016), (0.55, 0.40, 0.012)):
+            r = min(w, h) * fr * 2.2
+            c = QPointF(w * fx, h * fy)
+            body = QRadialGradient(c, r)
+            body.setColorAt(0.0, QColor(255, 255, 255, 18))
+            body.setColorAt(0.82, QColor(255, 255, 255, 40))
+            body.setColorAt(0.97, QColor(255, 255, 255, 150))
+            body.setColorAt(1.0, QColor(255, 255, 255, 0))
+            p.setPen(Qt.NoPen)
+            p.setBrush(body)
+            p.drawEllipse(c, r, r)
+            hl = QRadialGradient(QPointF(c.x() - r * 0.35, c.y() - r * 0.4), r * 0.45)
+            hl.setColorAt(0.0, QColor(255, 255, 255, 210))
+            hl.setColorAt(1.0, QColor(255, 255, 255, 0))
+            p.setBrush(hl)
+            p.drawEllipse(QPointF(c.x() - r * 0.35, c.y() - r * 0.4), r * 0.45, r * 0.32)
+        p.end()
+        return pm
+
     def paintEvent(self, e):
         p = QPainter(self)
-        p.fillRect(e.rect(), QColor(theme.BASE))
+        if theme.NAME != "aero":
+            p.fillRect(e.rect(), theme.qcolor(theme.BASE))
+            return
+        size = (self.width(), self.height())
+        if self._cache is None or self._cache[0] != size:
+            self._cache = (size, self._aero(*size))
+        p.drawPixmap(e.rect(), self._cache[1], e.rect())
 
 
 def hline():
@@ -49,7 +104,7 @@ class Logo(QWidget):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
         w, h = self.width(), self.height()
-        pen = QPen(QColor(self.accent), max(2.0, h * 0.13))
+        pen = QPen(theme.qcolor(theme.ACCENT if theme.DARK else theme.ACCENT_TEXT), max(2.0, h * 0.13))
         pen.setCapStyle(Qt.RoundCap)
         pen.setJoinStyle(Qt.RoundJoin)
         p.setPen(pen)
@@ -62,7 +117,11 @@ class Logo(QWidget):
 class Wordmark(QLabel):
     def __init__(self, size=15, parent=None):
         super().__init__(theme.wordmark_html(size), parent)
+        self.size_px = size
         self.setTextFormat(Qt.RichText)
+
+    def retheme(self):
+        self.setText(theme.wordmark_html(self.size_px))
 
 
 class Toggle(QAbstractButton):
@@ -102,14 +161,18 @@ class Toggle(QAbstractButton):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
         t = self._pos
-        border = QColor(self.accent) if t > 0.5 else QColor("#333333")
+        border = theme.qcolor(theme.ACCENT) if t > 0.5 else theme.qcolor(theme.TOGGLE_OFF)
         if not self.isEnabled():
             border.setAlpha(80)
         p.setPen(QPen(border, 1))
-        p.setBrush(QColor(theme.BASE))
+        filled = not theme.DARK and t > 0.5   # light/aero: iOS-style filled track, white knob
+        p.setBrush(theme.qcolor(theme.ACCENT) if filled else theme.qcolor(theme.FIELD))
         p.drawRoundedRect(QRectF(0.5, 2.5, 31, 17), 8.5, 8.5)
         p.setPen(Qt.NoPen)
-        knob = QColor(self.accent) if t > 0.5 else QColor(theme.TEXT_2)
+        if filled:
+            knob = QColor("#FFFFFF")
+        else:
+            knob = theme.qcolor(theme.ACCENT) if t > 0.5 else theme.qcolor(theme.TEXT_2)
         p.setBrush(knob)
         p.drawEllipse(QRectF(4 + t * 14, 6, 10, 10))
 
@@ -299,10 +362,10 @@ class RecordButton(QAbstractButton):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
         r = QRectF(3, 3, 70, 70)
-        p.setPen(QPen(QColor("#262626"), 2))
-        p.setBrush(QColor(theme.BASE))
+        p.setPen(QPen(theme.qcolor(theme.RING), 2))
+        p.setBrush(theme.qcolor(theme.BASE))
         p.drawEllipse(r)
-        lime = QColor(self.accent)
+        lime = theme.qcolor(theme.ACCENT)
         if self.recording:
             pen = QPen(lime, 2.5)
             pen.setCapStyle(Qt.RoundCap)
@@ -353,15 +416,15 @@ class PreviewView(QWidget):
         p.setRenderHint(QPainter.SmoothPixmapTransform)
         if self.image is None or self.image.isNull():
             r = QRectF(self.rect()).adjusted(1, 1, -1, -1)
-            p.setPen(QPen(QColor(theme.BORDER), 1))
-            p.setBrush(QColor(theme.SURFACE))
+            p.setPen(QPen(theme.qcolor(theme.BORDER), 1))
+            p.setBrush(theme.qcolor(theme.SURFACE))
             p.drawRoundedRect(r, 10, 10)
-            p.setPen(QColor(theme.TEXT_2))
+            p.setPen(theme.qcolor(theme.TEXT_2))
             f = QFont(theme.MONO, 12)
             p.setFont(f)
             p.drawText(r.adjusted(0, -12, 0, -12), Qt.AlignCenter, self.message)
             if self.sub:
-                p.setPen(QColor(theme.TEXT_3))
+                p.setPen(theme.qcolor(theme.TEXT_3))
                 p.setFont(QFont(theme.UI_FONT, 10))
                 p.drawText(r.adjusted(40, 30, -40, 30), Qt.AlignCenter | Qt.TextWordWrap, self.sub)
             return
@@ -375,11 +438,11 @@ class PreviewView(QWidget):
         if self.rec:
             p.setPen(QPen(theme.qcolor(theme.ACCENT, 210), 1.5))
         else:
-            p.setPen(QPen(QColor(theme.BORDER), 1))
+            p.setPen(QPen(theme.qcolor(theme.BORDER), 1))
         p.drawRoundedRect(r.adjusted(0.5, 0.5, -0.5, -0.5), 10, 10)
         if self.message and self.sub == "overlay":
             p.fillRect(r, QColor(0, 0, 0, 140))
-            p.setPen(QColor(theme.TEXT))
+            p.setPen(theme.qcolor(theme.TEXT))
             p.setFont(QFont(theme.MONO, 12))
             p.drawText(r, Qt.AlignCenter, self.message)
 
@@ -399,9 +462,10 @@ class StatusPill(QFrame):
         self._blink = QTimer(self)
         self._blink.timeout.connect(self._tick)
         self._on = True
-        self._colour = theme.MUTED
+        self._colour = theme.TEXT_2
 
     def set(self, text, colour, blink=False):
+        self.text.setStyleSheet(f"font-family: '{theme.MONO}'; font-size: 11px; color: {theme.TEXT_2};")
         self.text.setText(text.lower())
         self._colour = colour
         self.dot.setStyleSheet(f"color: {colour}; font-size: 9px;")

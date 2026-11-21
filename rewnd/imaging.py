@@ -161,7 +161,8 @@ def format_elapsed(seconds):
     return f"{h:02d}:{m:02d}:{s:02d}"
 
 
-def _pill(text, kind, px, accent, opacity, dot=False, rewind_icon=False, wordmark=False, alpha=255):
+def _pill(text, kind, px, accent, opacity, dot=False, rewind_icon=False, wordmark=False, alpha=255, ink=None):
+    ink = ink or accent
     f = font(kind, px)
     pad_x, pad_y = px * 0.62, px * 0.38
     left, top, right, bottom = f.getbbox(text)
@@ -194,11 +195,11 @@ def _pill(text, kind, px, accent, opacity, dot=False, rewind_icon=False, wordmar
         x += icon_w
     ty = (h - (bottom + top)) / 2
     if wordmark:  # "rewnd" with the vowel in lime, like the klokd/errnd wordmarks
-        for part, col in (("r", (240, 240, 240)), ("e", accent), ("wnd", (240, 240, 240))):
+        for part, col in (("r", ink), ("e", accent), ("wnd", ink)):
             d.text((x - left, ty), part, font=f, fill=col + (alpha,))
             x += f.getlength(part)
         return im
-    d.text((x - left, ty), text, font=f, fill=accent + (alpha,))
+    d.text((x - left, ty), text, font=f, fill=ink + (alpha,))
     return im
 
 
@@ -242,13 +243,14 @@ def draw_overlays(img, ov, elapsed=0.0, wall=None):
     margin = int(short * 0.035)
     gap = int(base * 0.35)
     accent = hex_rgb(ov.get("accent", "#C8F135"))
+    ink = hex_rgb(ov.get("text_color") or ov.get("accent", "#C8F135"))
     opacity = float(ov.get("pill_opacity", 0.55))
 
     stacks = {}
     for pos, kw in items:
         small = kw.pop("small", False)
         px = base * (0.72 if small else 1.0)
-        pill = _pill(kw.pop("text"), kw.pop("kind"), px, accent, opacity, **kw)
+        pill = _pill(kw.pop("text"), kw.pop("kind"), px, accent, opacity, ink=ink, **kw)
         stacks.setdefault(pos, []).append(pill)
 
     canvas = None

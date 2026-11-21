@@ -1,6 +1,5 @@
 """Settings sections bound directly to the config dict. Each control writes its key and calls on_change."""
 
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QComboBox, QDoubleSpinBox, QHBoxLayout, QLineEdit, QPushButton, QWidget)
 
 from rewnd.config import POSITIONS
@@ -255,29 +254,18 @@ def overlay_section(ov, on_change, accent, expanded=True):
     opacity.changed.connect(o)
     sec.add(opacity)
 
-    swatches = QHBoxLayout()
-    swatches.setSpacing(8)
-    buttons = []
+    from rewnd.ui.colour import ColourButton
 
-    def pick(hex_):
-        ov["accent"] = hex_
-        for b, h in buttons:
-            b.setChecked(h == hex_)
-        on_change()
-    for name, hex_ in theme.ACCENTS.items():
-        b = QPushButton()
-        b.setCheckable(True)
-        b.setFixedSize(22, 22)
-        b.setToolTip(name)
-        b.setCursor(Qt.PointingHandCursor)
-        b.setStyleSheet(
-            f"QPushButton {{ background: {hex_}; border-radius: 11px; border: 2px solid {theme.BASE}; padding: 0; }}"
-            f"QPushButton:checked {{ border: 2px solid {theme.TEXT}; }}")
-        b.setChecked(hex_.lower() == str(ov.get("accent", "")).lower())
-        b.clicked.connect(lambda _=False, h=hex_: pick(h))
-        buttons.append((b, hex_))
-        swatches.addWidget(b)
-    swatches.addStretch(1)
-    sec.form.addWidget(label("overlay colour", "FieldLabel"))
-    sec.add(swatches)
+    def colour_row(text, key, hint, fallback):
+        btn = ColourButton(ov.get(key) or fallback)
+
+        def f(hx):
+            ov[key] = hx
+            on_change()
+        btn.changed.connect(f)
+        sec.row(text, btn, hint)
+
+    colour_row("primary colour", "accent", "Dots, the tag's arrows and its \"e\".", "#C8F135")
+    colour_row("secondary colour", "text_color", "The text: stopwatch digits, clock, caption and the tag.",
+               ov.get("accent", "#C8F135"))
     return sec
