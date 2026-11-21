@@ -1,44 +1,92 @@
-# rewnd
+<p align="center"><b>rewnd</b></p>
+<p align="center"><i>your hours, rewound.</i><br>
+A free webcam timelapse app for Windows and Linux. Everything stays on your computer: no account, no cloud, no watermark you can't turn off.</p>
 
-A lightweight GUI for turning any UVC webcam into a timelapse camera on Linux. Point it at a webcam, set an interval, and it captures frames in the background and stitches them into an MP4 when you stop.
+![rewnd recording a session](docs/record.png)
 
-## Features
+## What it does
 
-- **Start/Stop capture** on any interval, with a live preview of the latest frame
-- **Auto-builds the video** (H.264 MP4) from captured frames as soon as you stop
-- **Multi-camera support** — auto-detects every real capture-capable camera on the system (filters out the metadata-only device nodes UVC cameras also expose) and lists each one's actual supported resolutions, rather than a fixed list that may not match the hardware
-- **Low-light boost** — many webcams leave auto-exposure fooled by backlighting, producing near-black frames. rewnd queries each camera's actual v4l2 controls at runtime and boosts whichever of `backlight_compensation`/`gain`/`brightness`/`gamma` it has, so this works across different camera models rather than being tuned to one
-- **Build Video Now** — re-render a video from any previous session's captured frames at a different framerate, without recapturing
-- Settings (device, resolution, interval, output FPS, save folder, low-light boost) persist between runs
+Point any webcam at your desk, hit record, and work. rewnd takes a shot every few seconds, and when you stop it hands you a finished, share-ready video: vertical for TikTok/Reels/Shorts if you want, with a stopwatch showing how long it really took.
 
-## Requirements
+- **Live preview that matches the export.** What you see while recording (crop, colour, overlays) is exactly what the video looks like.
+- **One-click vertical video.** 9:16, 1:1, 4:5 or 16:9, cropped to fill (with a slider to choose what's in frame) or fitted over a blurred copy of the shot.
+- **Fit to length.** Recorded for 6 hours? Ask for a 30 second video and rewnd picks the frames for you. No more speeding up and dropping frames by hand. Or use every frame at 24, 30 or 60 fps.
+- **Overlays.** A real-time stopwatch, the time of day, your own caption, and a small rewnd tag. Pick the corner, size and background, plus a primary colour (dots and icons) and a secondary colour (text) from a colour wheel.
+- **Three themes.** *black* (flat deep black and lime), *light* (its inverse) and *aero* (glossy Frutiger Aero glass), plus any accent colour from the wheel in the top bar.
+- **Fix the camera, not just the video.** Mirror (for webcams that flip you), upside down, rotate, brightness, contrast, saturation, warmth. All of it is non-destructive, so you can change your mind and re-export later.
+- **Camera control.** Autofocus and auto exposure on or off, a low-light boost, and on Windows the camera's own driver settings window.
+- **Doesn't drop out.** The camera stays open for the whole session and reconnects by itself if it disconnects. Stable USB mode (MJPEG) keeps bandwidth low on hubs and long USB extension cables.
+- **Smooth out flicker**, hold the last frame at the end so your result lands, and choose High / Balanced / Small file quality.
+- **Library.** Every session in one place, with thumbnails. Re-export in a different shape or length any time, rename, play, or delete.
+- **Built for long sessions.** Keeps the computer awake while recording, auto-stops after 1–8 hours if you want, and shows free disk space.
 
-- Python 3 with `tkinter` and `Pillow` (`python3-pil.imagetk` on Debian/Ubuntu)
-- `ffmpeg` — does the actual frame capture and video encoding
-- `v4l-utils` — used for camera capability/resolution detection and low-light tuning (optional: the app still works without it, just with less accurate device/resolution/tuning info)
+| Export | Library |
+|---|---|
+| ![Export dialog](docs/export.png) | ![Library](docs/library.png) |
 
-On Debian/Ubuntu:
+## Install
 
-```
-sudo apt install ffmpeg v4l-utils python3-pil.imagetk
-```
+You need **Python 3.9+** ([python.org](https://www.python.org/downloads/); on Windows tick *Add Python to PATH*). ffmpeg comes bundled, so there's nothing else to install.
 
-## Usage
+**Windows:** download or clone the repo, then double-click **`run.bat`**, or run `.\run.bat` from PowerShell in the repo folder.
 
-```
+**Linux / macOS:**
+
+```bash
+git clone https://github.com/z3zZ/rewnd.git
+cd rewnd
 ./run.sh
 ```
 
-or launch `timelapse_app.py` directly with `python3`.
+The first launch sets up a private environment in `.venv` (about a minute). After that it opens instantly.
 
-1. Pick your camera and resolution (populated automatically from what the hardware actually supports)
-2. Set a capture interval in seconds and an output video framerate
-3. Hit **Test Camera** to confirm framing/exposure before a long run
-4. Hit **Start** — frames save to `~/Timelapses/<timestamp>/frames/`
-5. Hit **Stop** whenever — the MP4 builds automatically in the same session folder
+Optional on Linux: `sudo apt install v4l-utils` gives rewnd precise control over focus, exposure and low-light settings, and lists each camera's exact resolutions.
 
-For multi-hour or multi-day timelapses: keep the laptop lid open (closing it will suspend the system on most distros, which stops capture), and make sure the save folder has enough free space for the frame count you expect.
+### Build a standalone app
 
-## How frames are captured
+To share rewnd with people who don't have Python:
 
-Each tick, rewnd runs a single-frame `ffmpeg` capture against the selected `/dev/videoN` device at the chosen resolution. On stop, it runs `ffmpeg` once more over the saved JPEG sequence to produce `timelapse.mp4` with `libx264`.
+```bash
+pip install -r requirements.txt pyinstaller
+python build.py
+```
+
+Zip up `dist/rewnd/` and send it. On Windows they run `rewnd.exe`.
+
+## Using it
+
+1. **Record tab:** pick your camera and resolution, and set how often to take a shot (22s and 40s are good for long work sessions).
+2. Set up the look while watching the live preview: mirror, framing, overlays.
+3. Hit the **record button** (or press **Space**). The ring around it counts down to the next shot.
+4. Stop when you're done. The video exports straight away and you get a *Play* / *Show in folder* prompt.
+5. Want a different version, such as horizontal for YouTube? Open the **Library**, hit *Export…*, scrub through the session, change the settings and export again.
+
+Sessions are saved in `~/Timelapses/<date_time>/`: the raw frames in `frames/`, plus every video you export. Raw frames are kept untouched, so any session can be re-exported with new settings.
+
+**Shortcuts:** `Space` record/stop · `Ctrl+1` Record · `Ctrl+2` Library
+
+## Tips
+
+- **Webcam showing you mirrored?** Look → Mirror.
+- **Lighting keeps pumping up and down?** Turn off Auto exposure once the shot looks right, and leave *Smooth out flicker* on.
+- **Focus hunting while you move?** Turn off Autofocus after it has focused on your desk.
+- **Camera keeps disconnecting on an extension cable or hub?** Keep *Stable USB mode* on, and try a powered hub or a port directly on the computer. rewnd will reconnect and carry on either way.
+- **Recording overnight?** Keep the laptop plugged in. With *Keep computer awake* on, the screen can turn off but recording carries on. Closing the lid will usually still sleep a laptop.
+
+## How it works
+
+rewnd keeps the webcam stream open through OpenCV (DirectShow on Windows, V4L2 on Linux) and saves the newest frame as a JPEG on each tick, along with its timestamp. Exporting runs each chosen frame through the same pipeline as the live preview (orient → colour → frame to aspect → overlays) and streams it into ffmpeg (H.264, `yuv420p`, `+faststart`, so it plays everywhere and uploads cleanly).
+
+Settings live in `%APPDATA%\rewnd\config.json` on Windows and `~/.config/rewnd/config.json` on Linux. Settings from the old version are carried over automatically.
+
+## Development
+
+```bash
+pip install -r requirements.txt pytest
+python -m pytest
+REWND_FAKE_CAMERA=1 python -m rewnd   # run with a demo camera, no webcam needed
+```
+
+Design follows the klokd / errnd family: flat deep black, JetBrains Mono, lime `#C8F135` accents.
+
+Fonts: [Inter](https://rsms.me/inter/) and [JetBrains Mono](https://www.jetbrains.com/lp/mono/), both under the SIL Open Font License (see `rewnd/assets/fonts`).
