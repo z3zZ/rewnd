@@ -4,6 +4,15 @@ A free webcam timelapse app for Windows and Linux. Everything stays on your comp
 
 ![rewnd recording a session](docs/record.png)
 
+## Download
+
+**[Get the latest release →](https://github.com/z3zZ/rewnd/releases/latest)**
+
+- **Windows:** download `rewnd-windows.zip`, unzip it anywhere, and run `rewnd.exe`. Windows may show a SmartScreen warning because the app isn't code-signed: click *More info → Run anyway*.
+- **Linux:** download `rewnd-linux.tar.gz`, extract it, and run `./rewnd/rewnd`.
+
+No Python, no ffmpeg, no account needed. Everything stays on your computer.
+
 ## What it does
 
 Point any webcam at your desk, hit record, and work. rewnd takes a shot every few seconds, and when you stop it hands you a finished, share-ready video: vertical for TikTok/Reels/Shorts if you want, with a stopwatch showing how long it really took.
@@ -24,7 +33,7 @@ Point any webcam at your desk, hit record, and work. rewnd takes a shot every fe
 |---|---|
 | ![Export dialog](docs/export.png) | ![Library](docs/library.png) |
 
-## Install
+## Run from source
 
 You need **Python 3.9+** ([python.org](https://www.python.org/downloads/); on Windows tick *Add Python to PATH*). ffmpeg comes bundled, so there's nothing else to install.
 
