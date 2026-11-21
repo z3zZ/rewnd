@@ -9,6 +9,46 @@ from PySide6.QtWidgets import (QAbstractButton, QButtonGroup, QFrame, QHBoxLayou
 from rewnd.ui import theme
 
 
+class GlassBackdrop(QWidget):
+    """Window background: near-black, a faint lime glow, and optionally a heavily blurred,
+    darkened copy of the live camera feed. The translucent glass panels sit on top of this,
+    which is what makes them read as glass rather than flat grey cards."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.ambient = None
+        self.setAttribute(Qt.WA_StyledBackground, False)
+
+    def set_ambient(self, qimg):
+        self.ambient = qimg
+        self.update()
+
+    def paintEvent(self, e):
+        from PySide6.QtGui import QRadialGradient, QLinearGradient
+        p = QPainter(self)
+        p.setClipRegion(e.region())
+        r = QRectF(self.rect())
+        p.fillRect(r, QColor(theme.BASE))
+        if self.ambient is not None and not self.ambient.isNull():
+            p.setRenderHint(QPainter.SmoothPixmapTransform)
+            p.setOpacity(0.38)
+            iw, ih = self.ambient.width(), self.ambient.height()
+            k = max(r.width() / iw, r.height() / ih) * 1.15
+            w, h = iw * k, ih * k
+            p.drawImage(QRectF((r.width() - w) / 2, (r.height() - h) / 2, w, h), self.ambient)
+            p.setOpacity(1.0)
+            fade = QLinearGradient(0, 0, 0, r.height())
+            fade.setColorAt(0.0, theme.qcolor(theme.BASE, 150))
+            fade.setColorAt(0.5, theme.qcolor(theme.BASE, 90))
+            fade.setColorAt(1.0, theme.qcolor(theme.BASE, 190))
+            p.fillRect(r, fade)
+        for cx, cy, rad, alpha in ((0.08, -0.15, 0.55, 26), (1.0, 1.1, 0.5, 16)):
+            g = QRadialGradient(QPointF(r.width() * cx, r.height() * cy), max(r.width(), r.height()) * rad)
+            g.setColorAt(0.0, theme.qcolor(theme.ACCENT, alpha))
+            g.setColorAt(1.0, theme.qcolor(theme.ACCENT, 0))
+            p.fillRect(r, g)
+
+
 def hline():
     f = QFrame()
     f.setObjectName("Divider")
@@ -23,9 +63,9 @@ def label(text, name=None):
 
 
 class Logo(QWidget):
-    """The rewnd mark: two rewind chevrons."""
+    """The rewnd mark: two round-stroke rewind chevrons, drawn like the errnd icon."""
 
-    def __init__(self, size=22, accent="#5CF2B4", parent=None):
+    def __init__(self, size=22, accent=theme.ACCENT, parent=None):
         super().__init__(parent)
         self.accent = accent
         self.setFixedSize(size, size)
@@ -34,22 +74,29 @@ class Logo(QWidget):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
         w, h = self.width(), self.height()
-        cy = h / 2
-        s = h * 0.36
-        p.setPen(Qt.NoPen)
-        for i, alpha in ((0, 255), (1, 150)):
-            ox = w * 0.08 + i * s * 1.2
-            p.setBrush(theme.qcolor(self.accent, alpha))
-            p.drawPolygon(QPolygonF([QPointF(ox, cy), QPointF(ox + s * 1.25, cy - s), QPointF(ox + s * 1.25, cy + s)]))
+        pen = QPen(QColor(self.accent), max(2.0, h * 0.13))
+        pen.setCapStyle(Qt.RoundCap)
+        pen.setJoinStyle(Qt.RoundJoin)
+        p.setPen(pen)
+        cy, s = h / 2, h * 0.28
+        for i in range(2):
+            x = w * 0.22 + i * w * 0.32
+            p.drawPolyline(QPolygonF([QPointF(x + s, cy - s), QPointF(x, cy), QPointF(x + s, cy + s)]))
+
+
+class Wordmark(QLabel):
+    def __init__(self, size=15, parent=None):
+        super().__init__(theme.wordmark_html(size), parent)
+        self.setTextFormat(Qt.RichText)
 
 
 class Toggle(QAbstractButton):
-    def __init__(self, checked=False, accent="#5CF2B4", parent=None):
+    def __init__(self, checked=False, accent=theme.ACCENT, parent=None):
         super().__init__(parent)
         self.setCheckable(True)
         self.setChecked(checked)
         self.setCursor(Qt.PointingHandCursor)
-        self.setFixedSize(36, 20)
+        self.setFixedSize(32, 22)
         self.accent = accent
         self._pos = 1.0 if checked else 0.0
         self._anim = QPropertyAnimation(self, b"pos", self)
@@ -73,23 +120,22 @@ class Toggle(QAbstractButton):
     pos = Property(float, _get_pos, _set_pos)
 
     def sizeHint(self):
-        return QSize(36, 20)
+        return QSize(32, 22)
 
     def paintEvent(self, _):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
-        off, on = QColor(theme.SURFACE_3), QColor(self.accent)
         t = self._pos
-        track = QColor(int(off.red() + (on.red() - off.red()) * t), int(off.green() + (on.green() - off.green()) * t),
-                       int(off.blue() + (on.blue() - off.blue()) * t))
+        border = theme.qcolor(self.accent, 150) if t > 0.5 else QColor(255, 255, 255, 40)
         if not self.isEnabled():
-            track.setAlpha(90)
+            border.setAlpha(60)
+        p.setPen(QPen(border, 1))
+        p.setBrush(theme.qcolor(self.accent, 28) if t > 0.5 else QColor(255, 255, 255, 12))
+        p.drawRoundedRect(QRectF(0.5, 2.5, 31, 17), 8.5, 8.5)
         p.setPen(Qt.NoPen)
-        p.setBrush(track)
-        p.drawRoundedRect(QRectF(0, 0, 36, 20), 10, 10)
-        p.setBrush(QColor("#0A0C0F") if t > 0.5 else QColor(theme.TEXT))
-        x = 3 + t * 16
-        p.drawEllipse(QRectF(x, 3, 14, 14))
+        knob = QColor(self.accent) if t > 0.5 else QColor(theme.TEXT_2)
+        p.setBrush(knob)
+        p.drawEllipse(QRectF(4 + t * 14, 6, 10, 10))
 
 
 class Segmented(QFrame):
@@ -168,14 +214,14 @@ class Section(QFrame):
         outer.addWidget(self.header)
         self.body = QWidget()
         self.form = QVBoxLayout(self.body)
-        self.form.setContentsMargins(14, 0, 14, 14)
+        self.form.setContentsMargins(2, 0, 2, 16)
         self.form.setSpacing(10)
         outer.addWidget(self.body)
         self.set_expanded(expanded)
 
     def set_expanded(self, on):
         self.body.setVisible(on)
-        self.header.setText(("▾  " if on else "▸  ") + self.title)
+        self.header.setText(("▾  " if on else "▸  ") + self.title.upper())
 
     def toggle(self):
         self.set_expanded(not self.body.isVisible())
@@ -258,7 +304,7 @@ class RecordButton(QAbstractButton):
         self.setFixedSize(76, 76)
         self.recording = False
         self.progress = 0.0
-        self.accent = "#5CF2B4"
+        self.accent = theme.ACCENT
         self._hover = False
 
     def enterEvent(self, e):
@@ -276,24 +322,24 @@ class RecordButton(QAbstractButton):
     def paintEvent(self, _):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
-        r = QRectF(4, 4, 68, 68)
-        p.setPen(QPen(QColor(theme.SURFACE_3), 4))
-        p.setBrush(Qt.NoBrush)
+        r = QRectF(3, 3, 70, 70)
+        p.setPen(QPen(QColor(255, 255, 255, 34), 2))
+        p.setBrush(QColor(255, 255, 255, 10))
         p.drawEllipse(r)
+        lime = QColor(self.accent)
         if self.recording:
-            pen = QPen(QColor(self.accent), 4)
+            pen = QPen(lime, 2.5)
             pen.setCapStyle(Qt.RoundCap)
             p.setPen(pen)
             p.drawArc(r, 90 * 16, int(-360 * 16 * max(0.0, min(1.0, self.progress))))
         p.setPen(Qt.NoPen)
-        red = QColor(theme.REC)
         if self._hover:
-            red = red.lighter(112)
-        p.setBrush(red)
+            lime = lime.lighter(110)
+        p.setBrush(lime)
         if self.recording:
-            p.drawRoundedRect(QRectF(27, 27, 22, 22), 5, 5)
+            p.drawRoundedRect(QRectF(29, 29, 18, 18), 4, 4)
         else:
-            inset = 13 if self._hover else 14
+            inset = 15 if self._hover else 16
             p.drawEllipse(QRectF(inset, inset, 76 - 2 * inset, 76 - 2 * inset))
 
 
@@ -331,17 +377,16 @@ class PreviewView(QWidget):
         p.setRenderHint(QPainter.SmoothPixmapTransform)
         if self.image is None or self.image.isNull():
             r = QRectF(self.rect()).adjusted(1, 1, -1, -1)
-            p.setPen(QPen(QColor(theme.BORDER), 1, Qt.DashLine))
-            p.setBrush(QColor(theme.SURFACE))
-            p.drawRoundedRect(r, 16, 16)
-            p.setPen(QColor(theme.MUTED))
-            f = QFont("Inter", 14)
-            f.setWeight(QFont.DemiBold)
+            p.setPen(QPen(QColor(255, 255, 255, 22), 1))
+            p.setBrush(QColor(255, 255, 255, 8))
+            p.drawRoundedRect(r, 14, 14)
+            p.setPen(QColor(theme.TEXT_2))
+            f = QFont(theme.MONO, 12)
             p.setFont(f)
             p.drawText(r.adjusted(0, -12, 0, -12), Qt.AlignCenter, self.message)
             if self.sub:
-                p.setPen(QColor(theme.FAINT))
-                p.setFont(QFont("Inter", 11))
+                p.setPen(QColor(theme.TEXT_3))
+                p.setFont(QFont(theme.UI_FONT, 10))
                 p.drawText(r.adjusted(40, 30, -40, 30), Qt.AlignCenter | Qt.TextWordWrap, self.sub)
             return
         r = self.image_rect()
@@ -352,16 +397,14 @@ class PreviewView(QWidget):
         p.setClipping(False)
         p.setBrush(Qt.NoBrush)
         if self.rec:
-            p.setPen(QPen(theme.qcolor(theme.REC, 200), 2))
+            p.setPen(QPen(theme.qcolor(theme.ACCENT, 210), 1.5))
         else:
-            p.setPen(QPen(QColor(255, 255, 255, 18), 1))
+            p.setPen(QPen(QColor(255, 255, 255, 30), 1))
         p.drawRoundedRect(r.adjusted(0.5, 0.5, -0.5, -0.5), 14, 14)
         if self.message and self.sub == "overlay":
-            p.fillRect(r, QColor(0, 0, 0, 120))
+            p.fillRect(r, QColor(0, 0, 0, 140))
             p.setPen(QColor(theme.TEXT))
-            f = QFont("Inter", 14)
-            f.setWeight(QFont.DemiBold)
-            p.setFont(f)
+            p.setFont(QFont(theme.MONO, 12))
             p.drawText(r, Qt.AlignCenter, self.message)
 
 
@@ -370,11 +413,11 @@ class StatusPill(QFrame):
         super().__init__(parent)
         self.setObjectName("StatusPill")
         lay = QHBoxLayout(self)
-        lay.setContentsMargins(10, 4, 12, 4)
-        lay.setSpacing(7)
+        lay.setContentsMargins(9, 3, 11, 3)
+        lay.setSpacing(6)
         self.dot = QLabel("●")
         self.text = QLabel("")
-        self.text.setStyleSheet("font-weight: 700; font-size: 11px; letter-spacing: 1px;")
+        self.text.setStyleSheet(f"font-family: '{theme.MONO}'; font-size: 11px; color: {theme.TEXT_2};")
         lay.addWidget(self.dot)
         lay.addWidget(self.text)
         self._blink = QTimer(self)
@@ -383,20 +426,20 @@ class StatusPill(QFrame):
         self._colour = theme.MUTED
 
     def set(self, text, colour, blink=False):
-        self.text.setText(text)
+        self.text.setText(text.lower())
         self._colour = colour
-        self.dot.setStyleSheet(f"color: {colour}; font-size: 10px;")
+        self.dot.setStyleSheet(f"color: {colour}; font-size: 9px;")
         if blink and not self._blink.isActive():
             self._blink.start(600)
         elif not blink:
             self._blink.stop()
             self._on = True
-            self.dot.setStyleSheet(f"color: {colour}; font-size: 10px;")
+            self.dot.setStyleSheet(f"color: {colour}; font-size: 9px;")
 
     def _tick(self):
         self._on = not self._on
         c = self._colour if self._on else "transparent"
-        self.dot.setStyleSheet(f"color: {c}; font-size: 10px;")
+        self.dot.setStyleSheet(f"color: {c}; font-size: 9px;")
 
 
 class Toast(QFrame):
@@ -405,7 +448,7 @@ class Toast(QFrame):
     def __init__(self, parent):
         super().__init__(parent)
         from PySide6.QtWidgets import QProgressBar
-        self.setObjectName("Card")
+        self.setObjectName("Toast")
         self.setFixedWidth(340)
         lay = QVBoxLayout(self)
         lay.setContentsMargins(16, 14, 16, 14)
@@ -415,7 +458,7 @@ class Toast(QFrame):
         self.body.setWordWrap(True)
         self.bar = QProgressBar()
         self.bar.setRange(0, 1000)
-        self.bar.setFixedHeight(6)
+        self.bar.setFixedHeight(4)
         self.actions = QHBoxLayout()
         self.actions.setSpacing(8)
         lay.addWidget(self.title)
@@ -447,7 +490,7 @@ class Toast(QFrame):
             self.actions.addWidget(b)
             b.show()
         if actions:
-            close = QPushButton("Dismiss")
+            close = QPushButton("dismiss")
             close.setObjectName("Ghost")
             close.clicked.connect(self.hide)
             self.actions.addStretch(1)

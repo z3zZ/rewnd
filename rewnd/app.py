@@ -11,21 +11,23 @@ from rewnd.ui import theme
 
 
 def app_icon(accent):
+    """Dark rounded tile with the lime round-stroke chevrons (same mark as the top bar)."""
+    from PySide6.QtGui import QPen
     pm = QPixmap(256, 256)
     pm.fill(Qt.transparent)
     p = QPainter(pm)
     p.setRenderHint(QPainter.Antialiasing)
     p.setPen(Qt.NoPen)
-    p.setBrush(QColor(theme.BG))
+    p.setBrush(QColor(theme.BASE))
     p.drawRoundedRect(0, 0, 256, 256, 56, 56)
-    s = 52
-    cy = 128
-    for i, alpha in ((0, 255), (1, 150)):
-        ox = 52 + i * s * 1.2
-        c = QColor(accent)
-        c.setAlpha(alpha)
-        p.setBrush(c)
-        p.drawPolygon(QPolygonF([QPointF(ox, cy), QPointF(ox + s * 1.25, cy - s), QPointF(ox + s * 1.25, cy + s)]))
+    pen = QPen(QColor(accent), 26)
+    pen.setCapStyle(Qt.RoundCap)
+    pen.setJoinStyle(Qt.RoundJoin)
+    p.setPen(pen)
+    s, cy = 46, 128
+    for i in range(2):
+        x = 62 + i * 70
+        p.drawPolyline(QPolygonF([QPointF(x + s, cy - s), QPointF(x, cy), QPointF(x + s, cy + s)]))
     p.end()
     return QIcon(pm)
 

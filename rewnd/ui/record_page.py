@@ -36,13 +36,13 @@ def fmt_bytes(n):
 
 
 class Stat(QWidget):
-    def __init__(self, caption, value="—"):
+    def __init__(self, caption, value="—", key=False):
         super().__init__()
         v = QVBoxLayout(self)
         v.setContentsMargins(0, 0, 0, 0)
         v.setSpacing(2)
         v.addWidget(label(caption, "Caps"))
-        self.value = label(value, "Stat")
+        self.value = label(value, "StatKey" if key else "Stat")
         v.addWidget(self.value)
 
     def set(self, text):
@@ -51,6 +51,7 @@ class Stat(QWidget):
 
 class RecordPage(QWidget):
     record_clicked = Signal()
+    ambient_changed = Signal(object)
     settings_changed = Signal()
     camera_changed = Signal()
     controls_changed = Signal()
@@ -66,19 +67,21 @@ class RecordPage(QWidget):
         self.session = None
         self.rec_started = None
         self._last_ts = 0.0
+        self._last_ambient = 0.0
         self.cameras = []
 
         root = QHBoxLayout(self)
-        root.setContentsMargins(20, 16, 12, 20)
-        root.setSpacing(16)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
 
         # ----- left: preview + controls -----
         left = QVBoxLayout()
+        left.setContentsMargins(24, 18, 18, 20)
         left.setSpacing(12)
         info = QHBoxLayout()
         info.setSpacing(10)
         self.status = StatusPill()
-        self.status.set("STARTING", theme.MUTED)
+        self.status.set("starting", theme.TEXT_3)
         info.addWidget(self.status)
         self.cam_label = label("", "Mono")
         info.addWidget(self.cam_label)
@@ -91,11 +94,11 @@ class RecordPage(QWidget):
         left.addWidget(self.preview, 1)
 
         bar = QFrame()
-        bar.setObjectName("Card")
+        bar.setObjectName("Glass")
         bl = QHBoxLayout(bar)
-        bl.setContentsMargins(22, 14, 22, 14)
+        bl.setContentsMargins(22, 12, 22, 12)
         bl.setSpacing(28)
-        self.stat_frames = Stat("FRAMES", "0")
+        self.stat_frames = Stat("FRAMES", "0", key=True)
         self.stat_elapsed = Stat("ELAPSED", "00:00:00")
         self.stat_video = Stat("VIDEO", "0.0s")
         for s in (self.stat_frames, self.stat_elapsed, self.stat_video):
@@ -117,17 +120,25 @@ class RecordPage(QWidget):
         root.addLayout(left, 1)
 
         # ----- right: settings -----
+        side = QFrame()
+        side.setObjectName("SidePanel")
+        side.setFixedWidth(368)
+        sl = QVBoxLayout(side)
+        sl.setContentsMargins(0, 0, 0, 0)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.NoFrame)
-        scroll.setFixedWidth(380)
         panel = QWidget()
         panel.setObjectName("Panel")
         self.panel = QVBoxLayout(panel)
-        self.panel.setContentsMargins(0, 0, 14, 0)
-        self.panel.setSpacing(12)
+        self.panel.setContentsMargins(18, 2, 14, 18)
+        self.panel.setSpacing(0)
         scroll.setWidget(panel)
-        root.addWidget(scroll)
+        sl.addWidget(scroll)
+        side_wrap = QVBoxLayout()
+        side_wrap.setContentsMargins(0, 18, 18, 20)
+        side_wrap.addWidget(side)
+        root.addLayout(side_wrap)
 
         self._build_camera_section()
         self._build_capture_section()
@@ -145,7 +156,7 @@ class RecordPage(QWidget):
     # ---------- sections ----------
 
     def _build_camera_section(self):
-        sec = Section("Camera")
+        sec = Section("camera")
         cam_row = QHBoxLayout()
         cam_row.setSpacing(6)
         self.cam_combo = QComboBox()
@@ -157,33 +168,33 @@ class RecordPage(QWidget):
         refresh.clicked.connect(self.refresh_cameras)
         cam_row.addWidget(self.cam_combo, 1)
         cam_row.addWidget(refresh)
-        sec.form.addWidget(label("Camera", "FieldLabel"))
+        sec.form.addWidget(label("camera", "FieldLabel"))
         sec.add(cam_row)
 
         self.res_combo = QComboBox()
         self.res_combo.setFixedWidth(150)
         self.res_combo.currentIndexChanged.connect(self._on_res_pick)
-        sec.row("Resolution", self.res_combo)
+        sec.row("resolution", self.res_combo)
 
         cam = self.cfg["camera"]
 
         def ctl():
             self.controls_changed.emit()
             self.settings_changed.emit()
-        forms.toggle(sec, "Autofocus", cam, "autofocus", ctl, self.accent,
+        forms.toggle(sec, "autofocus", cam, "autofocus", ctl, self.accent,
                      "Keep the camera focusing on its own. Turn off to lock focus.")
-        forms.toggle(sec, "Auto exposure", cam, "auto_exposure", ctl, self.accent,
+        forms.toggle(sec, "auto exposure", cam, "auto_exposure", ctl, self.accent,
                      "Let the camera adjust brightness. Turn off to lock it and stop lighting jumps.")
-        forms.toggle(sec, "Low-light boost", cam, "low_light", ctl, self.accent,
+        forms.toggle(sec, "low-light boost", cam, "low_light", ctl, self.accent,
                      "Raises gain and backlight compensation for dim or backlit rooms.")
 
         def mj():
             self.camera_changed.emit()
             self.settings_changed.emit()
-        forms.toggle(sec, "Stable USB mode", cam, "mjpeg", mj, self.accent,
+        forms.toggle(sec, "stable USB mode", cam, "mjpeg", mj, self.accent,
                      "Asks the camera for compressed MJPEG. Uses far less USB bandwidth, which helps on hubs and long extension cables.")
         if IS_WINDOWS:
-            drv = QPushButton("Camera driver settings…")
+            drv = QPushButton("camera driver settings…")
             drv.setToolTip("Opens the camera's own settings window for focus, exposure, white balance and more.")
             drv.clicked.connect(self.driver_settings)
             sec.add(drv)
@@ -191,9 +202,9 @@ class RecordPage(QWidget):
         self.camera_section = sec
 
     def _build_capture_section(self):
-        sec = Section("Capture")
+        sec = Section("capture")
         cap = self.cfg["capture"]
-        sec.form.addWidget(label("Take a shot every", "FieldLabel"))
+        sec.form.addWidget(label("take a shot every", "FieldLabel"))
         row = QHBoxLayout()
         row.setSpacing(8)
         self.int_chips = Chips([("5s", 5), ("10s", 10), ("22s", 22), ("40s", 40), ("60s", 60)])
@@ -223,29 +234,29 @@ class RecordPage(QWidget):
         self.estimate.setWordWrap(True)
         sec.add(self.estimate)
 
-        stop = Segmented([("Never", 0), ("1h", 60), ("2h", 120), ("4h", 240), ("8h", 480)],
+        stop = Segmented([("never", 0), ("1h", 60), ("2h", 120), ("4h", 240), ("8h", 480)],
                          int(cap.get("auto_stop_minutes", 0)))
 
         def st(v):
             cap["auto_stop_minutes"] = v
             self._changed()
         stop.changed.connect(st)
-        sec.stacked("Stop automatically after", stop)
+        sec.stacked("stop automatically after", stop)
 
         folder_row = QHBoxLayout()
         folder_row.setSpacing(6)
         self.folder_label = label(self._short_path(cap["output_root"]), "Mono")
         self.folder_label.setToolTip(cap["output_root"])
-        browse = QPushButton("Change…")
+        browse = QPushButton("change…")
         browse.clicked.connect(self._choose_folder)
         folder_row.addWidget(self.folder_label, 1)
         folder_row.addWidget(browse)
-        sec.form.addWidget(label("Save sessions to", "FieldLabel"))
+        sec.form.addWidget(label("save sessions to", "FieldLabel"))
         sec.add(folder_row)
 
-        forms.toggle(sec, "Keep computer awake", cap, "keep_awake", self._changed, self.accent,
+        forms.toggle(sec, "keep computer awake", cap, "keep_awake", self._changed, self.accent,
                      "Stops the computer sleeping mid-recording. The screen can still turn off.")
-        forms.toggle(sec, "Make the video when I stop", cap, "auto_export", self._changed, self.accent,
+        forms.toggle(sec, "make the video when I stop", cap, "auto_export", self._changed, self.accent,
                      "Exports straight away using your Framing and Overlay settings. You can re-export later from the Library.")
         self.capture_section = sec
         self.panel.addWidget(sec)
@@ -257,7 +268,7 @@ class RecordPage(QWidget):
         return "~" + p[len(home):] if p.startswith(home) else p
 
     def _choose_folder(self):
-        d = QFileDialog.getExistingDirectory(self, "Save sessions to", self.cfg["capture"]["output_root"])
+        d = QFileDialog.getExistingDirectory(self, "save sessions to", self.cfg["capture"]["output_root"])
         if d:
             self.cfg["capture"]["output_root"] = d
             self.folder_label.setText(self._short_path(d))
@@ -276,7 +287,7 @@ class RecordPage(QWidget):
         if cameras:
             self.cam_combo.setCurrentIndex(idx)
         else:
-            self.cam_combo.addItem("No camera found")
+            self.cam_combo.addItem("no camera found")
         self.cam_combo.setEnabled(bool(cameras) and not self.engine.recording())
         self.cam_combo.blockSignals(False)
 
@@ -333,24 +344,24 @@ class RecordPage(QWidget):
         rec = self.engine.recording()
         if state == "live":
             if rec:
-                self.status.set("REC", theme.REC, blink=True)
+                self.status.set("rec", theme.ACCENT, blink=True)
             else:
-                self.status.set("LIVE", self.accent)
+                self.status.set("live", self.accent)
             self.preview.set_message("", "")
         elif state in ("connecting",):
-            self.status.set("CONNECTING", theme.WARN)
+            self.status.set("connecting", theme.TEXT_2)
         elif state == "reconnecting":
-            self.status.set("RECONNECTING", theme.WARN, blink=True)
+            self.status.set("reconnecting", theme.WARN, blink=True)
             if rec:
-                self.preview.set_message("Camera dropped, reconnecting…", "overlay")
+                self.preview.set_message("camera dropped, reconnecting…", "overlay")
             else:
-                self.preview.set_message("Reconnecting to the camera…",
+                self.preview.set_message("reconnecting to the camera…",
                                          "If it's on a USB hub or extension cable, try Stable USB mode or a different port.")
                 self.preview.set_image(None)
         elif state == "no-camera":
-            self.status.set("NO CAMERA", theme.MUTED)
+            self.status.set("no camera", theme.TEXT_3)
             self.preview.set_image(None)
-            self.preview.set_message("No camera found", "Plug one in, then press the refresh button next to the camera list.")
+            self.preview.set_message("no camera found", "Plug one in, then press the refresh button next to the camera list.")
 
     def set_info(self, info):
         cam = info.get("camera")
@@ -369,9 +380,9 @@ class RecordPage(QWidget):
         self.preview.rec = rec
         self.rec_btn.setToolTip("Stop recording (Space)" if rec else "Start recording (Space)")
         if rec:
-            self.status.set("REC", theme.REC, blink=True)
+            self.status.set("rec", theme.ACCENT, blink=True)
         elif self.engine.status == "live":
-            self.status.set("LIVE", self.accent)
+            self.status.set("live", self.accent)
         self._force = True
 
     def on_shot(self, idx):
@@ -416,7 +427,13 @@ class RecordPage(QWidget):
         except Exception:
             return
         self.preview.set_image(cv_to_qimage(img))
+        now = time.time()
+        if now - self._last_ambient > 0.8:
+            self._last_ambient = now
+            tiny = cv2.resize(img, (48, max(8, int(48 * img.shape[0] / img.shape[1]))), interpolation=cv2.INTER_AREA)
+            tiny = cv2.GaussianBlur(tiny, (0, 0), 2.2)
+            self.ambient_changed.emit(cv_to_qimage(tiny))
 
     def refresh_disk(self):
         free = free_space(self.cfg["capture"]["output_root"])
-        self.disk_label.setText(f"{fmt_bytes(free)} free")
+        self.disk_label.setText(f"{fmt_bytes(free).lower()} free")

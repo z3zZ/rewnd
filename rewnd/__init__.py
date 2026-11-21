@@ -2,4 +2,4 @@
 
 __version__ = "1.0.0"
 APP_NAME = "rewnd"
-TAGLINE = "Hours of work, rewound in seconds."
+TAGLINE = "your hours, rewound."

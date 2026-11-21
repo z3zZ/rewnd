@@ -8,12 +8,12 @@ from rewnd.ui import theme
 from rewnd.ui.widgets import Chips, Section, Segmented, SliderRow, Toggle, label
 
 POSITION_LABELS = {
-    "top-left": "Top left", "top-center": "Top centre", "top-right": "Top right",
-    "bottom-left": "Bottom left", "bottom-center": "Bottom centre", "bottom-right": "Bottom right",
+    "top-left": "top left", "top-center": "top centre", "top-right": "top right",
+    "bottom-left": "bottom left", "bottom-center": "bottom centre", "bottom-right": "bottom right",
 }
 
 
-def toggle(sec, text, d, key, on_change, accent, hint=None):
+def toggle(sec, text, d, key, on_change, accent=theme.ACCENT, hint=None):
     t = Toggle(bool(d.get(key)), accent)
 
     def f(v):
@@ -39,10 +39,10 @@ def position_combo(d, key, on_change):
 
 
 def look_section(look, on_change, accent, expanded=True):
-    sec = Section("Look", expanded=expanded)
-    toggle(sec, "Mirror", look, "mirror", on_change, accent,
+    sec = Section("look", expanded=expanded)
+    toggle(sec, "mirror", look, "mirror", on_change, accent,
            "Flip left to right. Turn on if your webcam shows you mirrored.")
-    toggle(sec, "Upside down", look, "flip", on_change, accent, "Flip top to bottom, for cameras mounted upside down.")
+    toggle(sec, "upside down", look, "flip", on_change, accent, "Flip top to bottom, for cameras mounted upside down.")
     rot = Segmented([("0°", 0), ("90°", 90), ("180°", 180), ("270°", 270)], look.get("rotate", 0))
     rot.setFixedWidth(200)
 
@@ -50,11 +50,11 @@ def look_section(look, on_change, accent, expanded=True):
         look["rotate"] = v
         on_change()
     rot.changed.connect(r)
-    sec.row("Rotate", rot)
+    sec.row("rotate", rot)
 
     sliders = []
-    for key, text in (("brightness", "Brightness"), ("contrast", "Contrast"),
-                      ("saturation", "Saturation"), ("warmth", "Warmth")):
+    for key, text in (("brightness", "brightness"), ("contrast", "contrast"),
+                      ("saturation", "saturation"), ("warmth", "warmth")):
         s = SliderRow(text, -100, 100, look.get(key, 0))
 
         def f(v, key=key):
@@ -64,7 +64,7 @@ def look_section(look, on_change, accent, expanded=True):
         sec.add(s)
         sliders.append((key, s))
 
-    reset = QPushButton("Reset colour")
+    reset = QPushButton("reset colour")
     reset.setObjectName("Ghost")
 
     def do_reset():
@@ -81,17 +81,17 @@ def look_section(look, on_change, accent, expanded=True):
 
 
 def framing_section(exp, on_change, accent, expanded=True):
-    sec = Section("Framing && length", expanded=expanded)
+    sec = Section("framing && length", expanded=expanded)
 
-    aspect = Segmented([("Original", "original"), ("16:9", "16:9"), ("9:16", "9:16"),
+    aspect = Segmented([("original", "original"), ("16:9", "16:9"), ("9:16", "9:16"),
                         ("1:1", "1:1"), ("4:5", "4:5")], exp.get("aspect"))
-    sec.stacked("Aspect ratio", aspect, "9:16 is TikTok, Reels and Shorts. 4:5 suits Instagram posts.")
+    sec.stacked("aspect ratio", aspect, "9:16 is TikTok, Reels and Shorts. 4:5 suits Instagram posts.")
 
-    fit = Segmented([("Crop to fill", "crop"), ("Fit + blur", "blur")], exp.get("fit"))
-    sec.stacked("When the shape changes", fit,
+    fit = Segmented([("crop to fill", "crop"), ("fit + blur", "blur")], exp.get("fit"))
+    sec.stacked("when the shape changes", fit,
                 "Crop fills the frame. Fit + blur shows the whole shot over a blurred copy of itself.")
 
-    offset = SliderRow("Crop position", -100, 100, int(float(exp.get("crop_offset", 0)) * 100), fmt="{:+d}")
+    offset = SliderRow("crop position", -100, 100, int(float(exp.get("crop_offset", 0)) * 100), fmt="{:+d}")
 
     def off(v):
         exp["crop_offset"] = v / 100.0
@@ -115,8 +115,8 @@ def framing_section(exp, on_change, accent, expanded=True):
     fit.changed.connect(fi)
     sync_offset()
 
-    mode = Segmented([("Fit to length", "target"), ("Every frame", "fps")], exp.get("length_mode"))
-    sec.stacked("Video length", mode,
+    mode = Segmented([("fit to length", "target"), ("every frame", "fps")], exp.get("length_mode"))
+    sec.stacked("video length", mode,
                 "Fit to length speeds up or slows down to hit a duration. Every frame uses each shot once.")
 
     target_row = QWidget()
@@ -160,25 +160,25 @@ def framing_section(exp, on_change, accent, expanded=True):
         exp["fps"] = v
         on_change()
     fps.changed.connect(fp)
-    sec.row("Frame rate", fps)
+    sec.row("frame rate", fps)
 
-    size = Segmented([("720p", 720), ("1080p", 1080), ("1440p", 1440), ("Source", 0)], int(exp.get("size", 1080)))
+    size = Segmented([("720p", 720), ("1080p", 1080), ("1440p", 1440), ("source", 0)], int(exp.get("size", 1080)))
 
     def sz(v):
         exp["size"] = v
         on_change()
     size.changed.connect(sz)
-    sec.stacked("Resolution", size)
+    sec.stacked("resolution", size)
 
-    quality = Segmented([("High", "high"), ("Balanced", "balanced"), ("Small file", "small")], exp.get("quality"))
+    quality = Segmented([("high", "high"), ("balanced", "balanced"), ("small file", "small")], exp.get("quality"))
 
     def q(v):
         exp["quality"] = v
         on_change()
     quality.changed.connect(q)
-    sec.stacked("Quality", quality)
+    sec.stacked("quality", quality)
 
-    toggle(sec, "Smooth out flicker", exp, "deflicker", on_change, accent,
+    toggle(sec, "smooth out flicker", exp, "deflicker", on_change, accent,
            "Evens out brightness jumps between shots, which timelapses are prone to.")
 
     hold = QDoubleSpinBox()
@@ -193,12 +193,12 @@ def framing_section(exp, on_change, accent, expanded=True):
         exp["hold_end"] = float(v)
         on_change()
     hold.valueChanged.connect(h)
-    sec.row("Hold the last frame", hold, "Freeze on the finished result at the end of the video.")
+    sec.row("hold the last frame", hold, "Freeze on the finished result at the end of the video.")
     return sec
 
 
 def overlay_section(ov, on_change, accent, expanded=True):
-    sec = Section("Overlays", expanded=expanded)
+    sec = Section("overlays", expanded=expanded)
 
     def line(text, key, pos_key, hint):
         row = QHBoxLayout()
@@ -220,12 +220,12 @@ def overlay_section(ov, on_change, accent, expanded=True):
         row.addWidget(combo)
         sec.add(row)
 
-    line("Stopwatch", "timer", "timer_position", "Real time elapsed since the session started.")
-    line("Clock", "clock", "clock_position", "The time of day each shot was taken.")
+    line("stopwatch", "timer", "timer_position", "Real time elapsed since the session started.")
+    line("clock", "clock", "clock_position", "The time of day each shot was taken.")
     line("rewnd tag", "watermark", "watermark_position", "A small rewnd mark. Turn it off any time, it's your video.")
 
     text = QLineEdit(ov.get("text", ""))
-    text.setPlaceholderText("Caption, e.g. building inkd")
+    text.setPlaceholderText("e.g. building inkd")
     pos = position_combo(ov, "text_position", on_change)
 
     def t(v):
@@ -236,10 +236,10 @@ def overlay_section(ov, on_change, accent, expanded=True):
     row.setSpacing(8)
     row.addWidget(text, 1)
     row.addWidget(pos)
-    sec.form.addWidget(label("Caption", "FieldLabel"))
+    sec.form.addWidget(label("caption", "FieldLabel"))
     sec.add(row)
 
-    scale = SliderRow("Size", 50, 200, int(float(ov.get("scale", 1.0)) * 100), fmt="{}%", reset=100)
+    scale = SliderRow("size", 50, 200, int(float(ov.get("scale", 1.0)) * 100), fmt="{}%", reset=100)
 
     def s(v):
         ov["scale"] = v / 100.0
@@ -247,7 +247,7 @@ def overlay_section(ov, on_change, accent, expanded=True):
     scale.changed.connect(s)
     sec.add(scale)
 
-    opacity = SliderRow("Background", 0, 100, int(float(ov.get("pill_opacity", 0.55)) * 100), fmt="{}%", reset=55)
+    opacity = SliderRow("background", 0, 100, int(float(ov.get("pill_opacity", 0.55)) * 100), fmt="{}%", reset=55)
 
     def o(v):
         ov["pill_opacity"] = v / 100.0
@@ -271,13 +271,13 @@ def overlay_section(ov, on_change, accent, expanded=True):
         b.setToolTip(name)
         b.setCursor(Qt.PointingHandCursor)
         b.setStyleSheet(
-            f"QPushButton {{ background: {hex_}; border-radius: 11px; border: 2px solid transparent; padding: 0; }}"
+            f"QPushButton {{ background: {hex_}; border-radius: 11px; border: 2px solid {theme.BASE}; padding: 0; }}"
             f"QPushButton:checked {{ border: 2px solid {theme.TEXT}; }}")
         b.setChecked(hex_.lower() == str(ov.get("accent", "")).lower())
         b.clicked.connect(lambda _=False, h=hex_: pick(h))
         buttons.append((b, hex_))
         swatches.addWidget(b)
     swatches.addStretch(1)
-    sec.form.addWidget(label("Accent colour", "FieldLabel"))
+    sec.form.addWidget(label("overlay colour", "FieldLabel"))
     sec.add(swatches)
     return sec

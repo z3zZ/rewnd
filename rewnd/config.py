@@ -65,7 +65,7 @@ DEFAULTS = {
         "watermark": True,
         "watermark_position": "bottom-right",
         "scale": 1.0,                # overlay size multiplier
-        "accent": "#5CF2B4",
+        "accent": "#C8F135",
         "pill_opacity": 0.55,
     },
     "export": {
@@ -81,7 +81,7 @@ DEFAULTS = {
         "hold_end": 1.5,             # seconds to hold the final frame
     },
     "ui": {
-        "accent": "#5CF2B4",
+        "accent": "#C8F135",
     },
 }
 

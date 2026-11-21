@@ -36,7 +36,7 @@ class Thumb(QWidget):
         p.setRenderHint(QPainter.SmoothPixmapTransform)
         r = QRectF(self.rect())
         path = QPainterPath()
-        path.addRoundedRect(r, 10, 10)
+        path.addRoundedRect(r, 6, 6)
         p.setClipPath(path)
         p.fillRect(r, theme.qcolor(theme.SURFACE_2))
         if self.img is not None:
@@ -46,7 +46,7 @@ class Thumb(QWidget):
             p.drawImage(QRectF((r.width() - w) / 2, (r.height() - h) / 2, w, h), self.img)
         else:
             p.setPen(theme.qcolor(theme.FAINT))
-            p.drawText(r, Qt.AlignCenter, "No frames")
+            p.drawText(r, Qt.AlignCenter, "no frames")
 
 
 def human_duration(sec):
@@ -89,11 +89,11 @@ class SessionCard(QFrame):
         v.addWidget(self.thumb)
 
         title_row = QHBoxLayout()
-        self.title = label(session.title, "H2")
+        self.title = label(session.title.lower(), "H2")
         title_row.addWidget(self.title, 1)
         videos = session.videos()
         if videos:
-            badge = label(f"{len(videos)} video{'s' if len(videos) > 1 else ''}", "Faint")
+            badge = label(f"{len(videos)} video{'s' if len(videos) > 1 else ''}", "Mono")
             title_row.addWidget(badge)
         v.addLayout(title_row)
 
@@ -101,27 +101,27 @@ class SessionCard(QFrame):
         bits = [f"{len(frames)} frames", human_duration(session.duration())]
         if interval:
             bits.append(f"every {interval:g}s")
-        v.addWidget(label(" · ".join(bits), "Muted"))
+        v.addWidget(label(" · ".join(bits), "Mono"))
 
         actions = QHBoxLayout()
         actions.setSpacing(6)
-        exp = QPushButton("Export…")
+        exp = QPushButton("export…")
         exp.setObjectName("Primary")
         exp.setEnabled(bool(frames))
         exp.clicked.connect(lambda: self.export_clicked.emit(self.session))
         actions.addWidget(exp)
         if videos:
-            play = QPushButton("Play")
+            play = QPushButton("play")
             play.clicked.connect(lambda: open_path(videos[0]))
             actions.addWidget(play)
         actions.addStretch(1)
         more = QPushButton("•••")
         more.setObjectName("Ghost")
         menu = QMenu(more)
-        menu.addAction("Open folder", lambda: open_path(session.path))
-        menu.addAction("Rename…", self._rename)
+        menu.addAction("open folder", lambda: open_path(session.path))
+        menu.addAction("rename…", self._rename)
         menu.addSeparator()
-        menu.addAction("Delete session…", self._delete)
+        menu.addAction("delete session…", self._delete)
         more.setMenu(menu)
         more.setStyleSheet("QPushButton::menu-indicator { image: none; width: 0; }")
         actions.addWidget(more)
@@ -165,14 +165,14 @@ class LibraryPage(QWidget):
         head = QHBoxLayout()
         col = QVBoxLayout()
         col.setSpacing(2)
-        col.addWidget(label("Library", "H1"))
+        col.addWidget(label("library", "H1"))
         self.sub = label("", "Muted")
         col.addWidget(self.sub)
         head.addLayout(col, 1)
-        open_btn = QPushButton("Open folder")
+        open_btn = QPushButton("open folder")
         open_btn.clicked.connect(lambda: open_path(self.cfg["capture"]["output_root"]))
         head.addWidget(open_btn)
-        refresh = QPushButton("Refresh")
+        refresh = QPushButton("refresh")
         refresh.clicked.connect(self.refresh)
         head.addWidget(refresh)
         root.addLayout(head)
@@ -185,7 +185,7 @@ class LibraryPage(QWidget):
         self.flow = FlowLayout(self.grid_host, spacing=16)
         self.scroll.setWidget(self.grid_host)
         root.addWidget(self.scroll, 1)
-        self.empty = label("No sessions yet. Hit record and they'll show up here.", "Muted")
+        self.empty = label("no sessions yet. hit record and they'll show up here.", "Muted")
         self.empty.setAlignment(Qt.AlignCenter)
         root.addWidget(self.empty)
 
@@ -201,7 +201,7 @@ class LibraryPage(QWidget):
             card.changed.connect(self.refresh)
             self.flow.addWidget(card)
         n = len(sessions)
-        self.sub.setText(f"{n} session{'s' if n != 1 else ''} in {self.cfg['capture']['output_root']}")
+        self.sub.setText(f"{n} session{'s' if n != 1 else ''} · {self.cfg['capture']['output_root']}")
         self.empty.setVisible(n == 0)
         self.scroll.setVisible(n > 0)
         self.grid_host.updateGeometry()

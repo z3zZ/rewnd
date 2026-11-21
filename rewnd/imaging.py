@@ -146,7 +146,7 @@ def font(kind, px):
         return ImageFont.load_default()
 
 
-def hex_rgb(h, fallback=(92, 242, 180)):
+def hex_rgb(h, fallback=(200, 241, 53)):
     try:
         h = h.lstrip("#")
         return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
@@ -161,7 +161,7 @@ def format_elapsed(seconds):
     return f"{h:02d}:{m:02d}:{s:02d}"
 
 
-def _pill(text, kind, px, accent, opacity, dot=False, rewind_icon=False, alpha=255):
+def _pill(text, kind, px, accent, opacity, dot=False, rewind_icon=False, wordmark=False, alpha=255):
     f = font(kind, px)
     pad_x, pad_y = px * 0.62, px * 0.38
     left, top, right, bottom = f.getbbox(text)
@@ -170,26 +170,36 @@ def _pill(text, kind, px, accent, opacity, dot=False, rewind_icon=False, alpha=2
     if dot:
         icon_w = px * 0.95
     if rewind_icon:
-        icon_w = px * 1.35
+        icon_w = px * 1.15
     w = int(tw + pad_x * 2 + icon_w)
     h = int(px + pad_y * 2)
     im = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     d = ImageDraw.Draw(im)
-    d.rounded_rectangle([0, 0, w - 1, h - 1], radius=h / 2, fill=(10, 12, 16, int(255 * opacity)))
+    d.rounded_rectangle([0, 0, w - 1, h - 1], radius=h / 2, fill=(13, 13, 13, int(255 * opacity)),
+                        outline=(255, 255, 255, int(40 * min(1.0, opacity * 1.6))), width=max(1, int(px * 0.04)))
     x = pad_x
     cy = h / 2
     if dot:
         r = px * 0.22
         d.ellipse([x, cy - r, x + 2 * r, cy + r], fill=accent + (alpha,))
         x += icon_w
-    if rewind_icon:
-        s = px * 0.34
+    if rewind_icon:  # round-stroke chevrons, same drawing as the app logo
+        s = px * 0.28
+        lw = max(2, int(px * 0.13))
         for i in range(2):
-            ox = x + i * s * 1.1
-            d.polygon([(ox, cy), (ox + s * 1.1, cy - s), (ox + s * 1.1, cy + s)], fill=accent + (alpha,))
+            ox = x + px * 0.08 + i * px * 0.42
+            pts = [(ox + s, cy - s), (ox, cy), (ox + s, cy + s)]
+            d.line(pts, fill=accent + (alpha,), width=lw, joint="curve")
+            for (px_, py_) in (pts[0], pts[2]):
+                d.ellipse([px_ - lw / 2, py_ - lw / 2, px_ + lw / 2, py_ + lw / 2], fill=accent + (alpha,))
         x += icon_w
     ty = (h - (bottom + top)) / 2
-    d.text((x - left, ty), text, font=f, fill=(255, 255, 255, alpha))
+    if wordmark:  # "rewnd" with the vowel in lime, like the klokd/errnd wordmarks
+        for part, col in (("r", (240, 240, 240)), ("e", accent), ("wnd", (240, 240, 240))):
+            d.text((x - left, ty), part, font=f, fill=col + (alpha,))
+            x += f.getlength(part)
+        return im
+    d.text((x - left, ty), text, font=f, fill=(240, 240, 240, alpha))
     return im
 
 
@@ -218,7 +228,7 @@ def overlay_items(ov, elapsed, wall):
         items.append((ov.get("text_position", "bottom-left"), dict(text=ov["text"], kind="sans")))
     if ov.get("watermark"):
         items.append((ov.get("watermark_position", "bottom-right"),
-                      dict(text="rewnd", kind="sans-bold", rewind_icon=True, small=True)))
+                      dict(text="rewnd", kind="mono", rewind_icon=True, wordmark=True, small=True)))
     return items
 
 
@@ -232,7 +242,7 @@ def draw_overlays(img, ov, elapsed=0.0, wall=None):
     base = short * 0.042 * float(ov.get("scale", 1.0))
     margin = int(short * 0.035)
     gap = int(base * 0.35)
-    accent = hex_rgb(ov.get("accent", "#5CF2B4"))
+    accent = hex_rgb(ov.get("accent", "#C8F135"))
     opacity = float(ov.get("pill_opacity", 0.55))
 
     stacks = {}

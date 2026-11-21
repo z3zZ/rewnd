@@ -1,5 +1,5 @@
-<p align="center"><b>⏪ rewnd</b></p>
-<p align="center"><b>Hours of work, rewound in seconds.</b><br>
+<p align="center"><b>rewnd</b></p>
+<p align="center"><i>your hours, rewound.</i><br>
 A free webcam timelapse app for Windows and Linux. Everything stays on your computer: no account, no cloud, no watermark you can't turn off.</p>
 
 ![rewnd recording a session](docs/record.png)
@@ -85,5 +85,7 @@ pip install -r requirements.txt pytest
 python -m pytest
 REWND_FAKE_CAMERA=1 python -m rewnd   # run with a demo camera, no webcam needed
 ```
+
+Design follows the klokd / errnd family: near-black glass, JetBrains Mono, lime `#C8F135` accents.
 
 Fonts: [Inter](https://rsms.me/inter/) and [JetBrains Mono](https://www.jetbrains.com/lp/mono/), both under the SIL Open Font License (see `rewnd/assets/fonts`).

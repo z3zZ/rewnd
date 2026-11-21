@@ -12,7 +12,7 @@ from rewnd import exporter, imaging
 from rewnd.platform_utils import open_path, reveal
 from rewnd.session import FRAME_RE
 from rewnd.ui import forms
-from rewnd.ui.widgets import PreviewView, cv_to_qimage, label
+from rewnd.ui.widgets import GlassBackdrop, PreviewView, cv_to_qimage, label
 
 
 class ExportJob(QObject):
@@ -83,7 +83,7 @@ class ExportDialog(QDialog):
 
     def __init__(self, session, defaults, accent, parent=None):
         super().__init__(parent)
-        self.setWindowTitle(f"Export · {session.title}")
+        self.setWindowTitle(f"rewnd · export · {session.title.lower()}")
         self.resize(1180, 760)
         self.session = session
         self.accent = accent
@@ -97,17 +97,21 @@ class ExportDialog(QDialog):
         self.job = None
         self._raw_cache = {}
 
-        root = QHBoxLayout(self)
-        root.setContentsMargins(20, 20, 14, 20)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        self.backdrop = GlassBackdrop()
+        outer.addWidget(self.backdrop)
+        root = QHBoxLayout(self.backdrop)
+        root.setContentsMargins(22, 20, 18, 20)
         root.setSpacing(16)
 
         left = QVBoxLayout()
         left.setSpacing(10)
-        left.addWidget(label(session.title, "H1"))
-        self.meta_label = label("", "Muted")
+        left.addWidget(label(session.title.lower(), "H1"))
+        self.meta_label = label("", "Mono")
         left.addWidget(self.meta_label)
         self.preview = PreviewView()
-        self.preview.set_message("No frames in this session")
+        self.preview.set_message("no frames in this session")
         left.addWidget(self.preview, 1)
         scrub = QHBoxLayout()
         self.scrub = QSlider(Qt.Horizontal)
@@ -120,18 +124,18 @@ class ExportDialog(QDialog):
         left.addLayout(scrub)
 
         foot = QFrame()
-        foot.setObjectName("Card")
+        foot.setObjectName("Glass")
         fl = QVBoxLayout(foot)
         fl.setContentsMargins(16, 12, 16, 12)
         fl.setSpacing(10)
         row = QHBoxLayout()
-        self.summary = label("", "H2")
+        self.summary = label("", "Mono")
         row.addWidget(self.summary, 1)
-        self.defaults_btn = QPushButton("Use as my defaults")
+        self.defaults_btn = QPushButton("use as my defaults")
         self.defaults_btn.setObjectName("Ghost")
         self.defaults_btn.clicked.connect(self._save_defaults)
         row.addWidget(self.defaults_btn)
-        self.export_btn = QPushButton("Export video")
+        self.export_btn = QPushButton("export video")
         self.export_btn.setObjectName("Primary")
         self.export_btn.clicked.connect(self._export)
         row.addWidget(self.export_btn)
@@ -142,10 +146,10 @@ class ExportDialog(QDialog):
         self.bar.hide()
         fl.addWidget(self.bar)
         self.result_row = QHBoxLayout()
-        self.result_label = label("", "Muted")
+        self.result_label = label("", "Mono")
         self.result_row.addWidget(self.result_label, 1)
-        self.play_btn = QPushButton("Play")
-        self.show_btn = QPushButton("Show in folder")
+        self.play_btn = QPushButton("play")
+        self.show_btn = QPushButton("show in folder")
         self.play_btn.hide()
         self.show_btn.hide()
         self.result_row.addWidget(self.play_btn)
@@ -157,26 +161,31 @@ class ExportDialog(QDialog):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.NoFrame)
-        scroll.setFixedWidth(372)
         panel = QWidget()
         panel.setObjectName("Panel")
         pl = QVBoxLayout(panel)
-        pl.setContentsMargins(0, 0, 10, 0)
-        pl.setSpacing(12)
+        pl.setContentsMargins(18, 2, 14, 18)
+        pl.setSpacing(0)
         pl.addWidget(forms.framing_section(self.exp, self._changed, accent))
         pl.addWidget(forms.overlay_section(self.ov, self._changed, accent, expanded=False))
         pl.addWidget(forms.look_section(self.look, self._changed, accent, expanded=False))
         pl.addStretch(1)
         scroll.setWidget(panel)
-        root.addWidget(scroll)
+        side = QFrame()
+        side.setObjectName("SidePanel")
+        side.setFixedWidth(368)
+        sl = QVBoxLayout(side)
+        sl.setContentsMargins(0, 0, 0, 0)
+        sl.addWidget(scroll)
+        root.addWidget(side)
 
         self._debounce = QTimer(self)
         self._debounce.setSingleShot(True)
         self._debounce.timeout.connect(self._render)
         self._changed()
         from rewnd.ui.library_page import human_duration
-        self.meta_label.setText(f"{len(self.frames)} frames · {human_duration(session.duration())} recorded · "
-                                f"{session.path}")
+        self.meta_label.setText(f"{len(self.frames)} frames · {human_duration(session.duration())} recorded")
+        self.meta_label.setToolTip(str(session.path))
 
     def _changed(self):
         self.summary.setText(exporter.describe(len(self.frames), self.exp))
@@ -208,12 +217,14 @@ class ExportDialog(QDialog):
         img = imaging.render(raw, self.look, self.exp, self.ov, elapsed=elapsed,
                              wall=imaging.wall_time(ts), size=720)
         self.preview.set_image(cv_to_qimage(img))
+        tiny = cv2.resize(img, (48, max(8, int(48 * img.shape[0] / img.shape[1]))), interpolation=cv2.INTER_AREA)
+        self.backdrop.set_ambient(cv_to_qimage(cv2.GaussianBlur(tiny, (0, 0), 2.2)))
         self.frame_label.setText(f"{i + 1} / {len(self.frames)}")
 
     def _save_defaults(self):
         self.saved_defaults.emit(copy.deepcopy(self.look), copy.deepcopy(self.exp), copy.deepcopy(self.ov))
-        self.defaults_btn.setText("Saved as defaults ✓")
-        QTimer.singleShot(1800, lambda: self.defaults_btn.setText("Use as my defaults"))
+        self.defaults_btn.setText("saved as defaults ✓")
+        QTimer.singleShot(1800, lambda: self.defaults_btn.setText("use as my defaults"))
 
     def _export(self):
         if self.job is not None:
@@ -232,22 +243,22 @@ class ExportDialog(QDialog):
         self.bar.show()
         self.play_btn.hide()
         self.show_btn.hide()
-        self.result_label.setText("Rendering…")
-        self.export_btn.setText("Cancel")
+        self.result_label.setText("rendering…")
+        self.export_btn.setText("cancel")
         self.export_btn.setObjectName("")
         self.export_btn.setStyle(self.export_btn.style())
         self.job.start()
 
     def _reset_button(self):
         self.job = None
-        self.export_btn.setText("Export video")
+        self.export_btn.setText("export video")
         self.export_btn.setObjectName("Primary")
         self.export_btn.setStyle(self.export_btn.style())
 
     def _done(self, path):
         self._reset_button()
         self.bar.setValue(1000)
-        self.result_label.setText(f"Saved {path.rsplit('/', 1)[-1].rsplit(chr(92), 1)[-1]}")
+        self.result_label.setText(f"saved {path.rsplit('/', 1)[-1].rsplit(chr(92), 1)[-1]}")
         for b in (self.play_btn, self.show_btn):
             try:
                 b.clicked.disconnect()
@@ -261,7 +272,7 @@ class ExportDialog(QDialog):
     def _failed(self, msg):
         self._reset_button()
         self.bar.hide()
-        self.result_label.setText("Export cancelled." if msg == "cancelled" else f"Export failed: {msg}")
+        self.result_label.setText("export cancelled." if msg == "cancelled" else f"export failed: {msg}")
 
     def closeEvent(self, e):
         if self.job is not None:

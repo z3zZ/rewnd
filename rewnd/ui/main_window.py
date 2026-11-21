@@ -5,16 +5,17 @@ import time
 from PySide6.QtCore import QObject, Qt, QTimer, Signal
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (QButtonGroup, QFrame, QHBoxLayout, QMainWindow, QMessageBox, QPushButton,
-                               QStackedWidget, QVBoxLayout, QWidget)
+                               QStackedWidget, QVBoxLayout)
 
-from rewnd import APP_NAME, TAGLINE, __version__, config
+from rewnd import APP_NAME, __version__, config
 from rewnd.camera import CaptureEngine, find_camera, list_cameras
 from rewnd.platform_utils import KeepAwake, open_path, reveal
 from rewnd.session import Session
 from rewnd.ui.export_dialog import ExportDialog, ExportJob, Relay
 from rewnd.ui.library_page import LibraryPage
 from rewnd.ui.record_page import RecordPage
-from rewnd.ui.widgets import Logo, Toast, label
+from rewnd.ui import theme
+from rewnd.ui.widgets import GlassBackdrop, Logo, Toast, Wordmark, label
 
 
 class EngineBridge(QObject):
@@ -45,8 +46,8 @@ class MainWindow(QMainWindow):
             on_error=lambda m: self.bridge.error.emit(m),
         )
 
-        root = QWidget()
-        root.setObjectName("Root")
+        root = GlassBackdrop()
+        self.backdrop = root
         v = QVBoxLayout(root)
         v.setContentsMargins(0, 0, 0, 0)
         v.setSpacing(0)
@@ -72,6 +73,7 @@ class MainWindow(QMainWindow):
         self.record.refresh_cameras.connect(self._load_cameras)
         self.record.driver_settings.connect(self.engine.open_driver_settings)
         self.library.export_requested.connect(self.open_export)
+        self.record.ambient_changed.connect(self.backdrop.set_ambient)
 
         self._save_timer = QTimer(self)
         self._save_timer.setSingleShot(True)
@@ -93,18 +95,19 @@ class MainWindow(QMainWindow):
     def _top_bar(self):
         bar = QFrame()
         bar.setObjectName("TopBar")
-        bar.setFixedHeight(60)
+        bar.setFixedHeight(52)
         h = QHBoxLayout(bar)
         h.setContentsMargins(20, 0, 20, 0)
         h.setSpacing(10)
-        h.addWidget(Logo(22, self.accent))
-        h.addWidget(label("rewnd", "Wordmark"))
-        tag = label(TAGLINE, "Tagline")
-        h.addSpacing(6)
+        h.addWidget(Logo(18, self.accent))
+        h.addWidget(Wordmark(15))
+        h.addSpacing(10)
+        tag = label(f'your hours, <span style="color:{theme.ACCENT};">rewound.</span>', "Tagline")
+        tag.setTextFormat(Qt.RichText)
         h.addWidget(tag)
         h.addStretch(1)
         self.tabs = QButtonGroup(self)
-        for i, text in enumerate(("Record", "Library")):
+        for i, text in enumerate(("record", "library")):
             b = QPushButton(text)
             b.setObjectName("Tab")
             b.setCheckable(True)
@@ -114,8 +117,15 @@ class MainWindow(QMainWindow):
         self.tabs.button(0).setChecked(True)
         self.tabs.idClicked.connect(self.go)
         h.addStretch(1)
-        h.addWidget(label(f"v{__version__} · free & local", "Faint"))
+        self.clock = label("", "Mono")
+        h.addWidget(self.clock)
+        h.addSpacing(8)
+        h.addWidget(label(f"v{__version__}", "Faint"))
+        self._update_clock()
         return bar
+
+    def _update_clock(self):
+        self.clock.setText(time.strftime("%H:%M"))
 
     def go(self, i):
         self.tabs.button(i).setChecked(True)
@@ -148,12 +158,12 @@ class MainWindow(QMainWindow):
         self.engine.configure(cam, self.cfg["capture"].get("resolution"), self.cfg["camera"])
 
     def _on_error(self, msg):
-        self.toast.show_message("Heads up", msg, timeout=6000)
+        self.toast.show_message("heads up", msg, timeout=6000)
 
     def _on_status(self, state, msg):
         self.record.set_status(state, msg)
         if state == "reconnecting" and self.session is not None and msg:
-            self.toast.show_message("Camera dropped", "Still recording. Shots resume as soon as it's back.",
+            self.toast.show_message("camera dropped", "Still recording. Shots resume as soon as it's back.",
                                     timeout=5000)
 
     # ---------- recording ----------
@@ -166,7 +176,7 @@ class MainWindow(QMainWindow):
 
     def start_recording(self):
         if self.engine.status != "live":
-            self.toast.show_message("No camera yet", "Wait for the preview to show up, then hit record.",
+            self.toast.show_message("no camera yet", "Wait for the preview to show up, then hit record.",
                                     timeout=4000)
             return
         try:
@@ -196,18 +206,19 @@ class MainWindow(QMainWindow):
         s.save_meta()
         n = len(s.frames())
         if n == 0:
-            self.toast.show_message("Nothing captured", "The session stopped before the first shot.", timeout=5000)
+            self.toast.show_message("nothing captured", "The session stopped before the first shot.", timeout=5000)
             return
         if self.cfg["capture"].get("auto_export", True):
             self.run_export(s)
         else:
-            self.toast.show_message(f"Saved {n} frames", "Export it whenever you like from the Library.",
-                                    actions=[("Export…", lambda: self.open_export(s))])
+            self.toast.show_message(f"saved {n} frames", "Export it whenever you like from the library.",
+                                    actions=[("export…", lambda: self.open_export(s))])
 
     def _on_shot(self, idx, _path):
         self.record.on_shot(idx)
 
     def _tick(self):
+        self._update_clock()
         if self.session is not None:
             mins = int(self.cfg["capture"].get("auto_stop_minutes", 0) or 0)
             if mins and time.time() - self.session.meta.get("started", time.time()) >= mins * 60:
@@ -222,25 +233,25 @@ class MainWindow(QMainWindow):
                         session.meta.get("export", self.cfg["export"]),
                         session.meta.get("overlay", self.cfg["overlay"]))
         n = len(session.frames())
-        self.toast.show_message("Making your video…", f"{n} frames", progress=0.0)
+        self.toast.show_message("making your video…", f"{n} frames", progress=0.0)
 
         def finished():
             if job in self.jobs:
                 self.jobs.remove(job)
         job.relay = Relay(
             job,
-            on_progress=lambda d, t: self.toast.show_message("Making your video…", f"{n} frames",
+            on_progress=lambda d, t: self.toast.show_message("making your video…", f"{n} frames",
                                                              progress=d / max(1, t)),
             on_done=self._export_done,
             on_failed=lambda m: self.toast.show_message(
-                "Export failed", m, actions=[("Try again…", lambda: self.open_export(session))]),
+                "export failed", m, actions=[("try again…", lambda: self.open_export(session))]),
             on_finished=finished, parent=self)
         self.jobs.append(job)
         job.start()
 
     def _export_done(self, path):
-        self.toast.show_message("Video ready", path.replace("\\", "/").rsplit("/", 1)[-1],
-                                actions=[("Play", lambda: open_path(path)), ("Show in folder", lambda: reveal(path))],
+        self.toast.show_message("video ready", path.replace("\\", "/").rsplit("/", 1)[-1],
+                                actions=[("play", lambda: open_path(path)), ("show in folder", lambda: reveal(path))],
                                 timeout=15000)
         if self.stack.currentIndex() == 1:
             self.library.refresh()
