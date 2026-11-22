@@ -42,7 +42,9 @@ DEFAULTS = {
     },
     "camera": {
         "autofocus": True,
-        "auto_exposure": True,
+        "exposure_mode": "protect",  # auto | protect (stop bright screens/windows blowing out) | manual
+        "exposure": None,            # manual exposure, 0..100 across the camera's range; None = start from current
+        "hdr": False,                # fuse 2-3 exposures per frame (needs a few seconds between shots)
         "low_light": False,
         "mjpeg": True,               # ask the camera for MJPG: less USB bandwidth, more stable on hubs/extenders
     },
@@ -124,7 +126,16 @@ def load(path: Path = None) -> dict:
             }
         except Exception:
             data = {}
+    _migrate(data)
     return _merge(DEFAULTS, data)
+
+
+def _migrate(data):
+    """Older configs had an auto_exposure on/off toggle; off meant a locked (manual) exposure."""
+    cam = data.get("camera")
+    if isinstance(cam, dict) and "auto_exposure" in cam:
+        auto = cam.pop("auto_exposure")
+        cam.setdefault("exposure_mode", "protect" if auto else "manual")
 
 
 def save(cfg: dict, path: Path = None) -> None:
