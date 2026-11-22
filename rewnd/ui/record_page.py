@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (QComboBox, QDoubleSpinBox, QFileDialog, QFrame, Q
 from rewnd import imaging
 from rewnd.platform_utils import IS_WINDOWS, free_space
 from rewnd.ui import forms, theme
-from rewnd.ui.widgets import (Chips, PreviewView, RecordButton, Section, Segmented, StatusPill,
+from rewnd.ui.widgets import (Chips, PreviewView, RecordButton, Section, Segmented, SliderRow, StatusPill,
                               cv_to_qimage, label)
 
 
@@ -182,8 +182,7 @@ class RecordPage(QWidget):
             self.settings_changed.emit()
         forms.toggle(sec, "autofocus", cam, "autofocus", ctl, self.accent,
                      "Keep the camera focusing on its own. Turn off to lock focus.")
-        forms.toggle(sec, "auto exposure", cam, "auto_exposure", ctl, self.accent,
-                     "Let the camera adjust brightness. Turn off to lock it and stop lighting jumps.")
+        self._build_exposure(sec, cam, ctl)
         forms.toggle(sec, "low-light boost", cam, "low_light", ctl, self.accent,
                      "Raises gain and backlight compensation for dim or backlit rooms.")
 
@@ -199,6 +198,59 @@ class RecordPage(QWidget):
             sec.add(drv)
         self.panel.addWidget(sec)
         self.camera_section = sec
+
+    def _build_exposure(self, sec, cam, ctl):
+        self.exp_mode = Segmented([("auto", "auto"), ("protect", "protect"), ("manual", "manual")],
+                                  cam.get("exposure_mode", "protect"))
+
+        def mode(v):
+            cam["exposure_mode"] = v
+            self._sync_exposure_ui()
+            ctl()
+        self.exp_mode.changed.connect(mode)
+        self.exp_mode_label = sec.stacked(
+            "exposure", self.exp_mode,
+            "auto: the camera decides, and bright screens or windows can blow out to white.\n"
+            "protect: rewnd lowers the exposure until bright things keep their detail.\n"
+            "manual: you set it with the slider, and it stays put.")
+
+        pos = cam.get("exposure")
+        self.exp_slider = SliderRow("exposure level", 0, 100, 50 if pos is None else round(pos), fmt="{:d}",
+                                    reset=50)
+
+        def level(v):
+            cam["exposure"] = float(v)
+            self.engine.set_exposure_pos(v)
+            self.settings_changed.emit()
+        self.exp_slider.changed.connect(level)
+        sec.add(self.exp_slider)
+
+        self.hdr_toggle = forms.toggle(
+            sec, "HDR", cam, "hdr", lambda: (self._sync_exposure_ui(), ctl()), self.accent,
+            "Takes 2–3 exposures for every frame and blends them, like a phone does, so screens and the "
+            "room both keep their detail. Needs at least 2.5 s between shots.")
+        self.exp_note = label("", "Faint")
+        self.exp_note.setWordWrap(True)
+        sec.add(self.exp_note)
+        self._exp_available = True
+        self._sync_exposure_ui()
+
+    def _sync_exposure_ui(self):
+        cam = self.cfg["camera"]
+        avail = self._exp_available
+        self.exp_mode.setEnabled(avail)
+        self.exp_slider.setVisible(avail and cam.get("exposure_mode") == "manual")
+        self.hdr_toggle.setEnabled(avail)
+        note = ""
+        if not avail:
+            note = "This camera doesn't let apps set its exposure, so it stays on auto."
+        elif cam.get("hdr"):
+            if float(self.cfg["capture"]["interval"]) < 2.5:
+                note = "HDR is paused: it needs at least 2.5 s between shots."
+            elif cam.get("exposure_mode") == "auto":
+                note = "HDR uses protect for its base exposure."
+        self.exp_note.setText(note)
+        self.exp_note.setVisible(bool(note))
 
     def _build_capture_section(self):
         sec = Section("capture")
@@ -324,6 +376,8 @@ class RecordPage(QWidget):
     # ---------- state ----------
 
     def _changed(self):
+        if hasattr(self, "exp_note"):
+            self._sync_exposure_ui()
         self._force = True
         self._update_estimate()
         self.settings_changed.emit()
@@ -363,6 +417,16 @@ class RecordPage(QWidget):
             self.preview.set_message("no camera found", "Plug one in, then press the refresh button next to the camera list.")
 
     def set_info(self, info):
+        if "exposure" in info:
+            e = info["exposure"]
+            self._exp_available = e.get("available", True)
+            pos = e.get("pos")
+            if pos is not None and e.get("mode") == "manual":
+                self.cfg["camera"]["exposure"] = pos
+                self.exp_slider.set_value(round(pos))
+            self._sync_exposure_ui()
+            if "camera" not in info:
+                return
         cam = info.get("camera")
         self.cam_label.setText(f"{cam.label if cam else ''}  ·  {info.get('actual', '').replace('x', '×')}")
         self.set_resolutions(info.get("resolutions", []), info.get("actual"))

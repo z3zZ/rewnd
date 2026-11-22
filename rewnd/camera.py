@@ -20,6 +20,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from rewnd import exposure, v4l2
 from rewnd.platform_utils import IS_MAC, IS_WINDOWS, NO_WINDOW
 from rewnd.session import frame_name
 
@@ -172,57 +173,25 @@ def linux_resolutions(path, prefer_mjpeg=True):
 
 # ---------- camera controls ----------
 
-def _v4l2_ctrls(path):
-    out = _run(["v4l2-ctl", "--device", path, "--list-ctrls"])
-    ctrls = {}
-    for line in out.splitlines():
-        line = line.strip()
-        if "0x" not in line or ":" not in line:
-            continue
-        name = line.split()[0]
-        kv = {}
-        for part in line.split(":", 1)[1].split():
-            if "=" in part:
-                k, v = part.split("=", 1)
-                try:
-                    kv[k] = int(v)
-                except ValueError:
-                    pass
-        ctrls[name] = kv
-    return ctrls
-
-
-def _v4l2_set(path, assignments):
-    if assignments:
-        _run(["v4l2-ctl", "--device", path, "--set-ctrl", ",".join(assignments)])
-
-
 def v4l2_apply(path, cam_cfg):
-    """Precise controls on Linux via v4l2-ctl. Returns True if v4l2-ctl handled it."""
-    if not path or shutil.which("v4l2-ctl") is None:
-        return False
-    c = _v4l2_ctrls(path)
-    sets = []
-    for name in ("focus_automatic_continuous", "focus_auto"):
-        if name in c:
-            sets.append(f"{name}={1 if cam_cfg.get('autofocus', True) else 0}")
-            break
-    for name in ("auto_exposure", "exposure_auto"):
-        if name in c:
-            # 3 = aperture priority (auto), 1 = manual (locks the current exposure)
-            sets.append(f"{name}={3 if cam_cfg.get('auto_exposure', True) else 1}")
-            break
-    _v4l2_set(path, sets)
-
-    sets = []
+    """Focus and low-light controls on Linux, straight through V4L2. Returns the control backend
+    it used, or None if the device couldn't be controlled that way. Exposure is handled by the
+    engine (see exposure.py)."""
+    ctrls = v4l2.open_controls(path)
+    if ctrls is None:
+        return None
+    c = ctrls.controls()
+    sets = {}
+    if "focus_automatic_continuous" in c:
+        sets["focus_automatic_continuous"] = 1 if cam_cfg.get("autofocus", True) else 0
     boost = cam_cfg.get("low_light", False)
-    if "backlight_compensation" in c and "max" in c["backlight_compensation"]:
-        v = c["backlight_compensation"]
-        sets.append(f"backlight_compensation={v['max'] if boost else v.get('default', v['min'])}")
+    bc = c.get("backlight_compensation")
+    if bc and "max" in bc:
+        sets["backlight_compensation"] = bc["max"] if boost else bc.get("default", bc.get("min", 0))
     for name, k in (("gain", 0.7), ("brightness", 0.35), ("gamma", 0.25)):
-        if name not in c or "min" not in c[name] or "max" not in c[name]:
+        v = c.get(name)
+        if not v or "min" not in v or "max" not in v:
             continue
-        v = c[name]
         base = v.get("default", (v["min"] + v["max"]) // 2)
         if boost:
             if name == "gain":
@@ -231,22 +200,16 @@ def v4l2_apply(path, cam_cfg):
                 target = min(v["max"], round(base + k * (v["max"] - base)))
         else:
             target = base
-        sets.append(f"{name}={target}")
-    _v4l2_set(path, sets)
-    return True
+        sets[name] = target
+    ctrls.set(sets)
+    return ctrls
 
 
 def cv_apply(cap, backend, cam_cfg):
-    """Best-effort controls through OpenCV (Windows/macOS, or Linux without v4l2-ctl)."""
+    """Best-effort controls through OpenCV (Windows/macOS, or Linux when V4L2 controls fail)."""
     try:
         cap.set(cv2.CAP_PROP_AUTOFOCUS, 1 if cam_cfg.get("autofocus", True) else 0)
-        auto = cam_cfg.get("auto_exposure", True)
-        if backend == cv2.CAP_V4L2:
-            cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 3 if auto else 1)
-        elif backend == cv2.CAP_DSHOW:
-            cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 1 if auto else 0)
-        if cam_cfg.get("low_light"):
-            cap.set(cv2.CAP_PROP_BACKLIGHT, 1)
+        cap.set(cv2.CAP_PROP_BACKLIGHT, 1 if cam_cfg.get("low_light") else 0)
     except Exception:
         pass
 
@@ -258,6 +221,8 @@ class FakeCapture:
         self.w, self.h = w, h
         self.t0 = time.time()
         self.alive = True
+        self.ev = 0.0       # exposure in stops, driven by exposure.FakeExposure
+        self.auto = True
 
     def isOpened(self):
         return self.alive
@@ -285,7 +250,16 @@ class FakeCapture:
         cx = int(w * (0.5 + 0.3 * np.sin(t * 0.5)))
         cv2.circle(img, (cx, int(h * 0.55)), int(h * 0.12), (90, 200, 250), -1, cv2.LINE_AA)
         cv2.rectangle(img, (int(w * 0.1), int(h * 0.78)), (int(w * 0.9), int(h * 0.82)), (40, 40, 50), -1)
-        return True, img
+        # a "monitor" much brighter than the room, which clips unless the exposure comes down
+        scene = img.astype(np.float32)
+        x0, y0 = int(w * 0.62), int(h * 0.12)
+        scene[y0:y0 + int(h * 0.3), x0:x0 + int(w * 0.3)] = (900, 880, 860)
+        text = np.zeros((h, w), np.uint8)
+        cv2.putText(text, "screen", (x0 + int(w * 0.04), y0 + int(h * 0.18)), cv2.FONT_HERSHEY_SIMPLEX,
+                    h / 300, 255, max(2, h // 180), cv2.LINE_AA)
+        scene[text > 0] = (500, 260, 180)
+        gain = 1.0 if self.auto else 2.0 ** self.ev
+        return True, np.clip(scene * gain, 0, 255).astype(np.uint8)
 
     def release(self):
         self.alive = False
@@ -330,6 +304,12 @@ class CaptureEngine(threading.Thread):
         self._backend = None
         self._opened_at = 0.0
 
+        self._exp = None          # exposure.ExposureControl for the open camera
+        self._ev = None           # exposure we last set, in stops (None while on auto)
+        self._guard = exposure.HighlightGuard()
+        self._settle_until = 0.0  # ignore frames taken before the last exposure change landed
+        self._last_meter = 0.0
+
     # ----- public API (thread-safe) -----
 
     def latest(self):
@@ -343,6 +323,11 @@ class CaptureEngine(threading.Thread):
     def apply_controls(self, cam_cfg):
         with self._lock:
             self._cmds.append(("controls", dict(cam_cfg)))
+
+    def set_exposure_pos(self, pos):
+        """Move the manual exposure without reapplying every other control (slider drags)."""
+        with self._lock:
+            self._cmds.append(("exposure_pos", float(pos)))
 
     def open_driver_settings(self):
         with self._lock:
@@ -424,6 +409,11 @@ class CaptureEngine(threading.Thread):
             cap.set(cv2.CAP_PROP_FRAME_HEIGHT, int(h))
 
         self._cap, self._backend = cap, backend
+        try:
+            self._exp = exposure.open_exposure(cap, backend, cam.path if IS_LINUX else None, fake=FAKE)
+        except Exception:
+            self._exp = None
+        self._ev = None
         self._apply_controls()
         ok, frame = cap.read()
         if not ok or frame is None:
@@ -434,6 +424,7 @@ class CaptureEngine(threading.Thread):
         self._opened_at = time.time()
         self.on_info({"camera": cam, "resolutions": options,
                       "actual": f"{self.actual_size[0]}x{self.actual_size[1]}"})
+        self._report_exposure()
         return True
 
     def _discover_resolutions(self, cap, cam):
@@ -453,10 +444,97 @@ class CaptureEngine(threading.Thread):
         return sorted(seen, key=_area, reverse=True) or ["1280x720", "640x480"]
 
     def _apply_controls(self):
-        if self._cap is None or FAKE:
+        if self._cap is None:
             return
-        if not (IS_LINUX and v4l2_apply(self.camera.path, self.cam_cfg)):
+        if not FAKE and not (IS_LINUX and v4l2_apply(self.camera.path, self.cam_cfg)):
             cv_apply(self._cap, self._backend, self.cam_cfg)
+        self._apply_exposure()
+
+    # ----- exposure -----
+
+    def exposure_mode(self):
+        mode = self.cam_cfg.get("exposure_mode", "protect")
+        if mode not in exposure.MODES:
+            mode = "protect"
+        if self._exp is None:
+            return "auto"
+        if mode == "auto" and self.cam_cfg.get("hdr"):
+            return "protect"   # HDR needs a known base exposure to bracket from
+        return mode
+
+    def _set_ev(self, ev):
+        self._ev = self._exp.write(ev)
+        self._settle_until = time.time() + exposure.SETTLE_SECONDS
+
+    def _apply_exposure(self):
+        exp = self._exp
+        if exp is None:
+            return
+        mode = self.exposure_mode()
+        try:
+            if mode == "auto":
+                exp.set_auto()
+                self._ev = None
+            elif mode == "manual":
+                pos = self.cam_cfg.get("exposure")
+                if pos is None:
+                    # first time in manual: start from what the camera is doing now, so nothing jumps
+                    cur = self._ev if self._ev is not None else exp.read()
+                    pos = exp.to_pos(cur if cur is not None else (exp.ev_min + exp.ev_max) / 2)
+                    self.cam_cfg["exposure"] = pos
+                self._set_ev(exp.from_pos(pos))
+            else:  # protect
+                if self._ev is None:
+                    cur = exp.read()
+                    self._set_ev(cur if cur is not None else (exp.ev_min + exp.ev_max) / 2)
+                else:
+                    self._set_ev(self._ev)
+        except Exception as e:
+            self.on_error(f"Couldn't set the camera's exposure: {e}")
+        self._report_exposure()
+
+    def _report_exposure(self):
+        exp = self._exp
+        pos = exp.to_pos(self._ev) if (exp is not None and self._ev is not None) else None
+        self.on_info({"exposure": {"available": exp is not None, "mode": self.exposure_mode(), "pos": pos}})
+
+    def _meter(self, frame, now):
+        """Highlight protection: nudge the exposure between shots."""
+        if self.exposure_mode() != "protect" or self._ev is None:
+            return
+        if now < self._settle_until or now - self._last_meter < 0.4:
+            return
+        self._last_meter = now
+        d = self._guard.step(exposure.measure(frame), recording=self.session is not None)
+        if d:
+            before = self._ev
+            self._set_ev(self._ev + d)
+            if abs(self._ev - before) > 1e-6:
+                self._report_exposure()
+
+    def _hdr_frame(self, base_frame):
+        """Bracket the exposure for one timelapse frame and fuse the results."""
+        exp, base = self._exp, self._ev
+        if exp is None or base is None:
+            return base_frame
+        frames = []
+        try:
+            for ev in exposure.bracket(base, self.exposure_mode(), exp):
+                if abs(ev - base) < 1e-6:
+                    frames.append(base_frame)
+                    continue
+                exp.write(ev)
+                frames.append(exposure.grab_settled(self._cap.read))
+        finally:
+            self._set_ev(base)
+        try:
+            return exposure.fuse(frames)
+        except Exception:
+            return base_frame
+
+    def hdr_active(self):
+        return (bool(self.cam_cfg.get("hdr")) and self._exp is not None
+                and self.interval >= exposure.HDR_MIN_INTERVAL)
 
     def _close(self):
         if self._cap is not None:
@@ -465,6 +543,8 @@ class CaptureEngine(threading.Thread):
             except Exception:
                 pass
         self._cap = None
+        self._exp = None
+        self._ev = None
 
     def _handle_cmds(self):
         with self._lock:
@@ -483,6 +563,10 @@ class CaptureEngine(threading.Thread):
             elif cmd[0] == "controls":
                 self.cam_cfg.update(cmd[1])
                 self._apply_controls()
+            elif cmd[0] == "exposure_pos":
+                self.cam_cfg["exposure"] = cmd[1]
+                if self._exp is not None and self.exposure_mode() == "manual":
+                    self._set_ev(self._exp.from_pos(cmd[1]))
             elif cmd[0] == "driver":
                 if self._cap is not None and self._backend == cv2.CAP_DSHOW:
                     self._cap.set(cv2.CAP_PROP_SETTINGS, 1)
@@ -541,8 +625,11 @@ class CaptureEngine(threading.Thread):
                 last_good = now
                 with self._lock:
                     self._latest, self._latest_ts = frame, now
+                self._meter(frame, now)
                 warmed = now - self._opened_at >= self.WARMUP_SECONDS
-                if self.session is not None and warmed and now >= self.next_shot:
+                if self.session is not None and warmed and now >= self.next_shot and now >= self._settle_until:
+                    if self.hdr_active():
+                        frame = self._hdr_frame(frame)
                     self._save_shot(frame, now)
                     self.next_shot += self.interval
                     if self.next_shot < now:   # fell behind (sleep, stall): don't burst, just resync
