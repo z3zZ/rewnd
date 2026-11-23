@@ -5,8 +5,8 @@ import pytest
 
 from rewnd import updates
 
-REL = updates.Release(version="1.0.2", tag="v1.0.2", url="https://github.com/z3zZ/rewnd/releases/tag/v1.0.2",
-                      name="rewnd v1.0.2", summary="Faster exports.")
+REL = updates.Release(version="99.0.0", tag="v99.0.0", url="https://github.com/z3zZ/rewnd/releases/tag/v99.0.0",
+                      name="rewnd v99.0.0", summary="Faster exports.")
 
 
 @pytest.fixture
@@ -26,8 +26,8 @@ def test_version_ordering():
 
 def test_check_finds_newer_and_respects_skip(online):
     assert updates.check("z3zZ/rewnd", "1.0.1", fetch=lambda r: REL) is REL
-    assert updates.check("z3zZ/rewnd", "1.0.2", fetch=lambda r: REL) is None
-    assert updates.check("z3zZ/rewnd", "1.0.1", skip="1.0.2", fetch=lambda r: REL) is None
+    assert updates.check("z3zZ/rewnd", "99.0", fetch=lambda r: REL) is None
+    assert updates.check("z3zZ/rewnd", "1.0.1", skip="99.0.0", fetch=lambda r: REL) is None
     assert updates.check("z3zZ/rewnd", "1.0.1", skip="1.0.1", fetch=lambda r: REL) is REL
     assert updates.check("z3zZ/rewnd", "1.0.1", fetch=lambda r: None) is None   # offline
 
@@ -74,14 +74,14 @@ def test_window_shows_notice_and_skip(tmp_path, monkeypatch, online):
             app.processEvents()
             time.sleep(0.02)
         assert w.release is REL
-        assert w.update_btn.isVisible() and "1.0.2" in w.update_btn.text()
-        assert w.toast.isVisible() and "1.0.2" in w.toast.title.text()
+        assert w.update_btn.isVisible() and "99.0.0" in w.update_btn.text()
+        assert w.toast.isVisible() and "99.0.0" in w.toast.title.text()
 
         w.update_btn.click()
         assert opened == [REL.url]
 
         w._skip_update(REL)
-        assert cfg["ui"]["skip_version"] == "1.0.2" and not w.update_btn.isVisible()
+        assert cfg["ui"]["skip_version"] == "99.0.0" and not w.update_btn.isVisible()
     finally:
         w.engine.shutdown()
         w.close()
