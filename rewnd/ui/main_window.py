@@ -1,13 +1,14 @@
 """Main window: top bar, Record/Library pages, the capture engine and background exports."""
 
+import threading
 import time
 
-from PySide6.QtCore import QObject, Qt, QTimer, Signal
-from PySide6.QtGui import QKeySequence, QShortcut
+from PySide6.QtCore import QObject, Qt, QTimer, QUrl, Signal
+from PySide6.QtGui import QDesktopServices, QKeySequence, QShortcut
 from PySide6.QtWidgets import (QButtonGroup, QFrame, QHBoxLayout, QMainWindow, QMessageBox, QPushButton,
                                QStackedWidget, QVBoxLayout, QWidget)
 
-from rewnd import APP_NAME, __version__, config
+from rewnd import APP_NAME, REPO, __version__, config, updates
 from rewnd.camera import CaptureEngine, find_camera, list_cameras
 from rewnd.platform_utils import KeepAwake, open_path, reveal
 from rewnd.session import Session
@@ -25,6 +26,7 @@ class EngineBridge(QObject):
     shot = Signal(int, str)
     info = Signal(dict)
     error = Signal(str)
+    update = Signal(object)   # updates.Release, from the update-check thread
 
 
 class MainWindow(QMainWindow):
@@ -87,6 +89,15 @@ class MainWindow(QMainWindow):
         QShortcut(QKeySequence("Ctrl+1"), self, activated=lambda: self.go(0))
         QShortcut(QKeySequence("Ctrl+2"), self, activated=lambda: self.go(1))
 
+        self.release = None
+        self._announced = None
+        self.bridge.update.connect(self._on_update)
+        if self.cfg["ui"].get("check_updates", True):
+            QTimer.singleShot(4000, self.check_for_updates)
+            self._update_timer = QTimer(self)
+            self._update_timer.timeout.connect(self.check_for_updates)
+            self._update_timer.start(6 * 60 * 60 * 1000)   # long sessions still hear about releases
+
         self.engine.start()
         self._load_cameras()
         self.record.refresh_disk()
@@ -135,6 +146,12 @@ class MainWindow(QMainWindow):
         h.addWidget(self.clock)
         h.addSpacing(8)
         h.addWidget(label(f"v{__version__}", "Faint"))
+        self.update_btn = QPushButton()
+        self.update_btn.setObjectName("Primary")
+        self.update_btn.setCursor(Qt.PointingHandCursor)
+        self.update_btn.clicked.connect(self._open_update)
+        self.update_btn.hide()
+        h.addWidget(self.update_btn)
         self._update_clock()
         return bar
 
@@ -202,6 +219,50 @@ class MainWindow(QMainWindow):
         if state == "reconnecting" and self.session is not None and msg:
             self.toast.show_message("camera dropped", "Still recording. Shots resume as soon as it's back.",
                                     timeout=5000)
+
+    # ---------- updates ----------
+
+    def check_for_updates(self):
+        skip = self.cfg["ui"].get("skip_version", "")
+
+        def run():
+            rel = updates.check(REPO, __version__, skip)
+            if rel is not None:
+                self.bridge.update.emit(rel)
+        threading.Thread(target=run, daemon=True, name="rewnd-update-check").start()
+
+    def _on_update(self, rel):
+        self.release = rel
+        self.update_btn.setText(f"update to {rel.version}")
+        self.update_btn.setToolTip(f"{rel.name} is out. Opens the download page.")
+        self.update_btn.show()
+        if rel.version != self._announced:
+            self._announce(rel, 0)
+
+    def _announce(self, rel, tries):
+        if self.release is not rel:
+            return
+        if self.toast.isVisible() and tries < 20:
+            # don't cover an export or camera message; the top-bar button is already showing
+            QTimer.singleShot(15000, lambda: self._announce(rel, tries + 1))
+            return
+        self._announced = rel.version
+        self.toast.show_message(
+            f"rewnd {rel.version} is out",
+            rel.summary or "A new version is ready to download.",
+            actions=[("get it", self._open_update), ("skip this version", lambda: self._skip_update(rel))],
+        )
+
+    def _open_update(self):
+        if self.release is not None:
+            QDesktopServices.openUrl(QUrl(self.release.url))
+        self.toast.hide()
+
+    def _skip_update(self, rel):
+        self.cfg["ui"]["skip_version"] = rel.version
+        self._schedule_save()
+        self.update_btn.hide()
+        self.toast.hide()
 
     # ---------- recording ----------
 

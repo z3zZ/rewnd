@@ -86,6 +86,8 @@ DEFAULTS = {
     "ui": {
         "theme": "black",            # black | light | aero
         "accent": "#C8F135",
+        "check_updates": True,       # look for a newer release on GitHub at launch
+        "skip_version": "",          # a release the user chose to skip
     },
 }
 
