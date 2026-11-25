@@ -15,6 +15,11 @@ from rewnd.session import FRAME_RE
 
 CRF = {"high": 18, "balanced": 23, "small": 28}
 
+# Smooth motion, like Skyflow's: each video frame blends the shots around it instead of showing one.
+# The width is in output frames: 1.0 means each frame's blend just reaches its neighbours' centres.
+SMOOTH_WIDTH = {"off": 0.0, "light": 1.25, "strong": 2.0}
+MAX_BLEND = 16            # most shots blended into one frame; wider windows are sampled evenly
+
 
 class ExportCancelled(Exception):
     pass
@@ -31,6 +36,60 @@ def plan(n_frames, exp):
     return list(range(n_frames))
 
 
+def _positions(n_frames, exp):
+    """Fractional source position of every output frame, and source frames per output frame."""
+    fps = max(1, int(exp.get("fps", 30)))
+    if exp.get("length_mode", "target") == "target":
+        wanted = max(1, int(round(float(exp.get("target_seconds", 30)) * fps)))
+        step = n_frames / wanted
+        return [min(n_frames - 1.0, i * step) for i in range(wanted)], step
+    return [float(i) for i in range(n_frames)], 1.0
+
+
+def plan_samples(n_frames, exp):
+    """For every output frame, the source frames to blend and their weights, as ((idx, w), ...).
+
+    With smooth motion off this is the same as plan(): one frame each. With it on, a triangular
+    window centred on the output frame's position in the session blends the neighbouring shots.
+    When the video speeds a session up, that's motion blur, so movement flows instead of
+    stuttering. When it slows down (each shot shown for several frames), it crossfades between
+    shots instead of holding and jumping. Either way it also averages away sensor noise.
+    """
+    if n_frames <= 0:
+        return []
+    width = SMOOTH_WIDTH.get(exp.get("smooth", "off"), 0.0)
+    if width <= 0:
+        return [((i, 1.0),) for i in plan(n_frames, exp)]
+    positions, step = _positions(n_frames, exp)
+    half = width * max(1.0, step)
+    out = []
+    for pos in positions:
+        lo = max(0, int(np.ceil(pos - half + 1e-9)))
+        hi = min(n_frames - 1, int(np.floor(pos + half - 1e-9)))
+        idxs = range(lo, hi + 1)
+        if len(idxs) > MAX_BLEND:
+            idxs = set(int(round(x)) for x in np.linspace(lo, hi, MAX_BLEND - 1))
+            idxs.add(min(n_frames - 1, int(round(pos))))
+            idxs = sorted(idxs)
+        pairs = [(i, 1.0 - abs(i - pos) / half) for i in idxs]
+        pairs = [(i, w) for i, w in pairs if w > 1e-3]
+        if not pairs:
+            pairs = [(min(n_frames - 1, int(round(pos))), 1.0)]
+        total = sum(w for _, w in pairs)
+        out.append(tuple((i, round(w / total, 4)) for i, w in pairs))
+    return out
+
+
+def blend(images, weights):
+    """Weighted average of same-sized uint8 frames."""
+    if len(images) == 1:
+        return images[0]
+    acc = np.zeros(images[0].shape, np.float32)
+    for img, w in zip(images, weights):
+        acc = cv2.scaleAdd(img.astype(np.float32), float(w), acc)
+    return np.clip(acc + 0.5, 0, 255).astype(np.uint8)
+
+
 def describe(n_frames, exp):
     """Human summary of what an export will produce, for the UI."""
     fps = max(1, int(exp.get("fps", 30)))
@@ -45,6 +104,8 @@ def describe(n_frames, exp):
         how = f"each frame held {len(seq) / n_frames:.1f}x"
     else:
         how = f"all {n_frames} frames"
+    if SMOOTH_WIDTH.get(exp.get("smooth", "off"), 0) > 0:
+        how += " · smooth motion"
     return f"{secs:.1f}s at {fps} fps · {how}"
 
 
@@ -72,7 +133,8 @@ def export(session, look, exp, ov, out_path=None, progress=None, cancel: threadi
 
     t0 = min((t for t in (ts_of(p) for p in frames) if t is not None), default=None)
     fps = max(1, int(exp.get("fps", 30)))
-    seq = plan(len(frames), exp)
+    samples = plan_samples(len(frames), exp)
+    seq = [max(smp, key=lambda p: p[1])[0] for smp in samples]
     hold = int(round(float(exp.get("hold_end", 0) or 0) * fps))
     total = len(seq) + hold
 
@@ -92,25 +154,46 @@ def export(session, look, exp, ov, out_path=None, progress=None, cancel: threadi
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
                             stderr=subprocess.PIPE, creationflags=NO_WINDOW)
 
-    def render_one(i):
-        path = frames[i]
-        raw = cv2.imread(str(path))
+    # Each shot is rendered (orientation, colour, framing) once and kept for a while, because
+    # smooth motion blends every shot into several neighbouring video frames.
+    cache, cache_lock, cache_size = {}, threading.Lock(), 48
+
+    def base(i):
+        with cache_lock:
+            img = cache.get(i)
+        if img is not None:
+            return img
+        raw = cv2.imread(str(frames[i]))
         if raw is None:
             raw = first
-        ts = ts_of(path)
-        elapsed = (ts - t0) if (ts is not None and t0 is not None) else 0.0
-        img = imaging.render(raw, look, exp, ov, elapsed=elapsed, wall=imaging.wall_time(ts))
+        img = imaging.render(raw, look, exp, ov, overlays=False)
         if img.shape[0] != H or img.shape[1] != W:
             img = cv2.resize(img, (W, H))
+        with cache_lock:
+            cache[i] = img
+            while len(cache) > cache_size:
+                cache.pop(next(iter(cache)))
+        return img
+
+    def render_one(smp):
+        img = blend([base(i) for i, _ in smp], [w for _, w in smp]).copy()
+        stamps_w = [(ts_of(frames[i]), w) for i, w in smp]
+        stamps_w = [(t, w) for t, w in stamps_w if t is not None]
+        if stamps_w and t0 is not None:
+            ts = sum(t * w for t, w in stamps_w) / sum(w for _, w in stamps_w)
+            elapsed = ts - t0
+        else:
+            ts, elapsed = None, 0.0
+        imaging.draw_overlays(img, ov, elapsed, imaging.wall_time(ts))
         return np.ascontiguousarray(img).tobytes()
 
-    # Consecutive repeats of the same source frame are rendered once and written several times.
+    # Consecutive identical frames are rendered once and written several times.
     runs = []
-    for idx in seq:
-        if runs and runs[-1][0] == idx:
+    for smp in samples:
+        if runs and runs[-1][0] == smp:
             runs[-1][1] += 1
         else:
-            runs.append([idx, 1])
+            runs.append([smp, 1])
 
     written = 0
     last = None

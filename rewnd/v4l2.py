@@ -42,6 +42,7 @@ CONTROL_IDS = {
     "auto_exposure": _CAMERA + 1,
     "exposure_time_absolute": _CAMERA + 2,
     "exposure_dynamic_framerate": _CAMERA + 3,
+    "focus_absolute": _CAMERA + 10,
     "focus_automatic_continuous": _CAMERA + 12,
 }
 # Older v4l2-ctl releases print these names instead.

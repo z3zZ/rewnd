@@ -180,8 +180,7 @@ class RecordPage(QWidget):
         def ctl():
             self.controls_changed.emit()
             self.settings_changed.emit()
-        forms.toggle(sec, "autofocus", cam, "autofocus", ctl, self.accent,
-                     "Keep the camera focusing on its own. Turn off to lock focus.")
+        self._build_focus(sec, cam, ctl)
         self._build_exposure(sec, cam, ctl)
         forms.toggle(sec, "low-light boost", cam, "low_light", ctl, self.accent,
                      "Raises gain and backlight compensation for dim or backlit rooms.")
@@ -198,6 +197,40 @@ class RecordPage(QWidget):
             sec.add(drv)
         self.panel.addWidget(sec)
         self.camera_section = sec
+
+    def _build_focus(self, sec, cam, ctl):
+        def af():
+            self._sync_focus_ui()
+            ctl()
+        self.af_toggle = forms.toggle(
+            sec, "autofocus", cam, "autofocus", af, self.accent,
+            "On: the camera keeps refocusing, which can make a timelapse pop between sharp and soft. "
+            "Off: focus stays put and you set it with the slider.")
+        pos = cam.get("focus")
+        self.focus_slider = SliderRow("focus", 0, 100, 50 if pos is None else round(pos), fmt="{:d}", reset=50)
+        self.focus_slider.setToolTip("Slide until your desk (or whatever matters) is sharp in the preview. "
+                                     "On most webcams lower is further away.")
+
+        def level(v):
+            cam["focus"] = float(v)
+            self.engine.set_focus_pos(v)
+            self.settings_changed.emit()
+        self.focus_slider.changed.connect(level)
+        sec.add(self.focus_slider)
+        self.focus_note = label("", "Faint")
+        self.focus_note.setWordWrap(True)
+        sec.add(self.focus_note)
+        self._focus_available = True
+        self._sync_focus_ui()
+
+    def _sync_focus_ui(self):
+        manual = not self.cfg["camera"].get("autofocus", True)
+        self.focus_slider.setVisible(manual and self._focus_available)
+        note = ""
+        if manual and not self._focus_available:
+            note = "This camera doesn't let apps set its focus. It may be fixed-focus already."
+        self.focus_note.setText(note)
+        self.focus_note.setVisible(bool(note))
 
     def _build_exposure(self, sec, cam, ctl):
         self.exp_mode = Segmented([("auto", "auto"), ("protect", "protect"), ("manual", "manual")],
@@ -417,6 +450,15 @@ class RecordPage(QWidget):
             self.preview.set_message("no camera found", "Plug one in, then press the refresh button next to the camera list.")
 
     def set_info(self, info):
+        if "focus" in info:
+            f = info["focus"]
+            self._focus_available = f.get("available", True)
+            pos = f.get("pos")
+            if pos is not None:
+                self.cfg["camera"]["focus"] = pos
+                self.focus_slider.set_value(round(pos))
+            self._sync_focus_ui()
+            return
         if "exposure" in info:
             e = info["exposure"]
             self._exp_available = e.get("available", True)

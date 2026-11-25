@@ -20,7 +20,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from rewnd import exposure, v4l2
+from rewnd import exposure, focus, v4l2
 from rewnd.platform_utils import IS_MAC, IS_WINDOWS, NO_WINDOW
 from rewnd.session import frame_name
 
@@ -28,6 +28,15 @@ IS_LINUX = sys.platform.startswith("linux")
 COMMON_RESOLUTIONS = ["3840x2160", "2560x1440", "1920x1080", "1600x900", "1280x720", "1024x576",
                       "800x600", "640x480"]
 FAKE = os.environ.get("REWND_FAKE_CAMERA") == "1"
+
+
+def JPEG_PARAMS(quality):
+    """Saved frames keep full colour resolution (4:4:4). The default 4:2:0 halves colour detail,
+    and the export then halves it again, which smears fine edges like screen text."""
+    params = [cv2.IMWRITE_JPEG_QUALITY, int(quality)]
+    if hasattr(cv2, "IMWRITE_JPEG_SAMPLING_FACTOR"):
+        params += [cv2.IMWRITE_JPEG_SAMPLING_FACTOR, cv2.IMWRITE_JPEG_SAMPLING_FACTOR_444]
+    return params
 
 
 @dataclass
@@ -223,6 +232,8 @@ class FakeCapture:
         self.alive = True
         self.ev = 0.0       # exposure in stops, driven by exposure.FakeExposure
         self.auto = True
+        self.focus = 140    # sharp at 140, driven by focus.FakeFocus
+        self.autofocus = True
 
     def isOpened(self):
         return self.alive
@@ -259,7 +270,12 @@ class FakeCapture:
                     h / 300, 255, max(2, h // 180), cv2.LINE_AA)
         scene[text > 0] = (500, 260, 180)
         gain = 1.0 if self.auto else 2.0 ** self.ev
-        return True, np.clip(scene * gain, 0, 255).astype(np.uint8)
+        out = np.clip(scene * gain, 0, 255).astype(np.uint8)
+        if not self.autofocus:
+            sigma = abs(self.focus - 140) / 25.0
+            if sigma > 0.3:
+                out = cv2.GaussianBlur(out, (0, 0), sigma)
+        return True, out
 
     def release(self):
         self.alive = False
@@ -296,7 +312,7 @@ class CaptureEngine(threading.Thread):
 
         self.session = None
         self.interval = 10.0
-        self.jpeg_quality = 92
+        self.jpeg_quality = 95
         self.next_shot = 0.0
         self.shot_count = 0
         self.missed = 0
@@ -309,6 +325,7 @@ class CaptureEngine(threading.Thread):
         self._guard = exposure.HighlightGuard()
         self._settle_until = 0.0  # ignore frames taken before the last exposure change landed
         self._last_meter = 0.0
+        self._focus = None        # focus.FocusControl for the open camera
 
     # ----- public API (thread-safe) -----
 
@@ -329,11 +346,16 @@ class CaptureEngine(threading.Thread):
         with self._lock:
             self._cmds.append(("exposure_pos", float(pos)))
 
+    def set_focus_pos(self, pos):
+        """Move the manual focus (slider drags)."""
+        with self._lock:
+            self._cmds.append(("focus_pos", float(pos)))
+
     def open_driver_settings(self):
         with self._lock:
             self._cmds.append(("driver",))
 
-    def start_recording(self, session, interval, jpeg_quality=92):
+    def start_recording(self, session, interval, jpeg_quality=95):
         with self._lock:
             self.session = session
             self.interval = max(0.2, float(interval))
@@ -414,6 +436,11 @@ class CaptureEngine(threading.Thread):
         except Exception:
             self._exp = None
         self._ev = None
+        try:
+            self._focus = focus.open_focus(cap, backend, cam.path if IS_LINUX else None,
+                                           cam.index if IS_WINDOWS else None, fake=FAKE)
+        except Exception:
+            self._focus = None
         self._apply_controls()
         ok, frame = cap.read()
         if not ok or frame is None:
@@ -425,6 +452,7 @@ class CaptureEngine(threading.Thread):
         self.on_info({"camera": cam, "resolutions": options,
                       "actual": f"{self.actual_size[0]}x{self.actual_size[1]}"})
         self._report_exposure()
+        self._report_focus()
         return True
 
     def _discover_resolutions(self, cap, cam):
@@ -449,6 +477,34 @@ class CaptureEngine(threading.Thread):
         if not FAKE and not (IS_LINUX and v4l2_apply(self.camera.path, self.cam_cfg)):
             cv_apply(self._cap, self._backend, self.cam_cfg)
         self._apply_exposure()
+        self._apply_focus()
+
+    # ----- focus -----
+
+    def _apply_focus(self):
+        f = self._focus
+        if f is None:
+            return
+        try:
+            if self.cam_cfg.get("autofocus", True):
+                f.set_auto(True)
+            else:
+                pos = self.cam_cfg.get("focus")
+                if pos is None:
+                    # first time off autofocus: lock where the camera is now, so nothing jumps
+                    cur = f.read()
+                    pos = f.to_pos(cur) if cur is not None else 50.0
+                    self.cam_cfg["focus"] = pos
+                f.write(f.from_pos(pos))
+        except Exception as e:
+            self.on_error(f"Couldn't set the camera's focus: {e}")
+        self._report_focus()
+
+    def _report_focus(self):
+        f = self._focus
+        pos = self.cam_cfg.get("focus") if f is not None else None
+        self.on_info({"focus": {"available": f is not None,
+                                "auto": bool(self.cam_cfg.get("autofocus", True)), "pos": pos}})
 
     # ----- exposure -----
 
@@ -545,6 +601,7 @@ class CaptureEngine(threading.Thread):
         self._cap = None
         self._exp = None
         self._ev = None
+        self._focus = None
 
     def _handle_cmds(self):
         with self._lock:
@@ -567,6 +624,13 @@ class CaptureEngine(threading.Thread):
                 self.cam_cfg["exposure"] = cmd[1]
                 if self._exp is not None and self.exposure_mode() == "manual":
                     self._set_ev(self._exp.from_pos(cmd[1]))
+            elif cmd[0] == "focus_pos":
+                self.cam_cfg["focus"] = cmd[1]
+                if self._focus is not None and not self.cam_cfg.get("autofocus", True):
+                    try:
+                        self._focus.write(self._focus.from_pos(cmd[1]))
+                    except Exception:
+                        pass
             elif cmd[0] == "driver":
                 if self._cap is not None and self._backend == cv2.CAP_DSHOW:
                     self._cap.set(cv2.CAP_PROP_SETTINGS, 1)
@@ -580,7 +644,7 @@ class CaptureEngine(threading.Thread):
             return
         idx = self.shot_count + 1
         dest = s.frames_dir / frame_name(idx)
-        ok = cv2.imwrite(str(dest), frame, [cv2.IMWRITE_JPEG_QUALITY, self.jpeg_quality])
+        ok = cv2.imwrite(str(dest), frame, JPEG_PARAMS(self.jpeg_quality))
         if ok:
             self.shot_count = idx
             s.log_frame(idx, now)

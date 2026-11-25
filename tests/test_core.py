@@ -153,7 +153,7 @@ def test_engine_records_with_fake_camera(tmp_path, monkeypatch):
         time.sleep(0.05)
     s = Session.create(tmp_path, cfg)
     eng.start_recording(s, 0.3)
-    time.sleep(1.6)
+    time.sleep(2.4)   # protect pauses shots while each exposure step settles
     eng.stop_recording()
     eng.shutdown()
     assert len(shots) >= 3
