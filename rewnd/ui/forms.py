@@ -180,6 +180,17 @@ def framing_section(exp, on_change, accent, expanded=True):
     toggle(sec, "smooth out flicker", exp, "deflicker", on_change, accent,
            "Evens out brightness jumps between shots, which timelapses are prone to.")
 
+    smooth = Segmented([("off", "off"), ("light", "light"), ("strong", "strong")], exp.get("smooth", "off"))
+
+    def sm(v):
+        exp["smooth"] = v
+        on_change()
+    smooth.changed.connect(sm)
+    sec.stacked("smooth motion", smooth,
+                "Blends each shot into its neighbours, like Skyflow, so movement flows instead of "
+                "jumping and camera noise averages out. Strong looks dreamier; moving people blur more. "
+                "You'll see it in the exported video, not the still preview.")
+
     hold = QDoubleSpinBox()
     hold.setRange(0, 10)
     hold.setSingleStep(0.5)

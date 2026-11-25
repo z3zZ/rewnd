@@ -35,13 +35,14 @@ DEFAULTS = {
         "resolution": None,          # "1920x1080"; None = best available
         "interval": 10.0,            # seconds between shots
         "output_root": str(Path.home() / "Timelapses"),
-        "jpeg_quality": 92,
+        "jpeg_quality": 95,
         "auto_stop_minutes": 0,      # 0 = never
         "keep_awake": True,
         "auto_export": True,         # export a video as soon as you stop
     },
     "camera": {
         "autofocus": True,
+        "focus": None,               # manual focus, 0..100 across the camera's range; None = lock where it is
         "exposure_mode": "protect",  # auto | protect (stop bright screens/windows blowing out) | manual
         "exposure": None,            # manual exposure, 0..100 across the camera's range; None = start from current
         "hdr": False,                # fuse 2-3 exposures per frame (needs a few seconds between shots)
@@ -81,6 +82,7 @@ DEFAULTS = {
         "size": 1080,                # short side in pixels (1080 = 1080p); 0 = keep source size
         "quality": "high",           # high | balanced | small
         "deflicker": True,
+        "smooth": "off",             # smooth motion: off | light | strong (blends neighbouring shots)
         "hold_end": 1.5,             # seconds to hold the final frame
     },
     "ui": {
@@ -138,6 +140,9 @@ def _migrate(data):
     if isinstance(cam, dict) and "auto_exposure" in cam:
         auto = cam.pop("auto_exposure")
         cam.setdefault("exposure_mode", "protect" if auto else "manual")
+    capture = data.get("capture")
+    if isinstance(capture, dict) and capture.get("jpeg_quality") == 92:
+        capture["jpeg_quality"] = 95   # the old default; raised in 1.1 for sharper frames
 
 
 def save(cfg: dict, path: Path = None) -> None:

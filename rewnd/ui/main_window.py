@@ -284,7 +284,7 @@ class MainWindow(QMainWindow):
             return
         config.save(self.cfg)
         self.engine.start_recording(self.session, self.cfg["capture"]["interval"],
-                                    self.cfg["capture"].get("jpeg_quality", 92))
+                                    self.cfg["capture"].get("jpeg_quality", 95))
         if self.cfg["capture"].get("keep_awake", True):
             self.keep_awake.start()
         self.record.set_recording(self.session)

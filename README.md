@@ -23,9 +23,10 @@ Point any webcam at your desk, hit record, and work. rewnd takes a shot every fe
 - **Overlays.** A real-time stopwatch, the time of day, your own caption, and a small rewnd tag. Pick the corner, size and background, plus a primary colour (dots and icons) and a secondary colour (text) from a colour wheel.
 - **Three themes.** *black* (flat deep black and lime), *light* (its inverse) and *aero* (glossy Frutiger Aero glass), plus any accent colour from the wheel in the top bar.
 - **Fix the camera, not just the video.** Mirror (for webcams that flip you), upside down, rotate, brightness, contrast, saturation, warmth. All of it is non-destructive, so you can change your mind and re-export later.
-- **Camera control.** Autofocus on or off, a low-light boost, and on Windows the camera's own driver settings window.
+- **Camera control.** Manual focus (turn autofocus off and set it with a slider, so the shot stops pulsing in and out of focus), a low-light boost, and on Windows the camera's own driver settings window.
 - **Exposure that handles bright screens.** *Protect* (the default) lowers the exposure until monitors and windows stop blowing out to white. *Manual* gives you a slider. *HDR* takes 2–3 exposures per frame and blends them, like a phone does, so the screens and the room both keep their detail.
 - **Doesn't drop out.** The camera stays open for the whole session and reconnects by itself if it disconnects. Stable USB mode (MJPEG) keeps bandwidth low on hubs and long USB extension cables.
+- **Smooth motion**, like Skyflow: each video frame blends the shots around it, so movement flows instead of jumping and camera noise averages out. *Light* or *Strong*.
 - **Smooth out flicker**, hold the last frame at the end so your result lands, and choose High / Balanced / Small file quality.
 - **Library.** Every session in one place, with thumbnails. Re-export in a different shape or length any time, rename, play, or delete.
 - **Built for long sessions.** Keeps the computer awake while recording, auto-stops after 1–8 hours if you want, and shows free disk space.
@@ -79,6 +80,7 @@ Sessions are saved in `~/Timelapses/<date_time>/`: the raw frames in `frames/`, 
 
 - **Webcam showing you mirrored?** Look → Mirror.
 - **Screens or a window showing as flat white?** Use *Protect* exposure. If the room then looks too dark, turn on *HDR* (needs at least 2.5 s between shots).
+- **Video pulsing between sharp and blurry?** That's autofocus hunting. Turn *autofocus* off and drag *focus* until your desk is sharp.
 - **Lighting keeps pumping up and down?** Switch exposure to *Manual* once the shot looks right, and leave *Smooth out flicker* on.
 - **Focus hunting while you move?** Turn off Autofocus after it has focused on your desk.
 - **Camera keeps disconnecting on an extension cable or hub?** Keep *Stable USB mode* on, and try a powered hub or a port directly on the computer. rewnd will reconnect and carry on either way.
