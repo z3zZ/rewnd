@@ -7,6 +7,7 @@ Output: dist/rewnd/  (run rewnd.exe on Windows, ./rewnd on Linux)
 """
 
 import os
+import shutil
 import subprocess
 import sys
 
@@ -29,4 +30,8 @@ args = [
     *[x for m in UNUSED_QT for x in ("--exclude-module", f"PySide6.{m}")],
     "rewnd/__main__.py",
 ]
-sys.exit(subprocess.call(args))
+code = subprocess.call(args)
+if code == 0:
+    # MIT requires the licence notice to travel with copies of the app.
+    shutil.copy("LICENSE", os.path.join("dist", "rewnd", "LICENSE.txt"))
+sys.exit(code)

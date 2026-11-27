@@ -117,3 +117,7 @@ REWND_FAKE_CAMERA=1 REWND_FAKE_NO_EXPOSURE=1 python -m rewnd   # ...one that can
 Design follows the klokd / errnd family: flat deep black, JetBrains Mono, lime `#C8F135` accents.
 
 Fonts: [Inter](https://rsms.me/inter/) and [JetBrains Mono](https://www.jetbrains.com/lp/mono/), both under the SIL Open Font License (see `rewnd/assets/fonts`).
+
+## License
+
+rewnd is released under the [MIT License](LICENSE). Bundled fonts keep their own licences (above).
