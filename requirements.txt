@@ -4,3 +4,5 @@ numpy>=1.24
 Pillow>=10.0
 imageio-ffmpeg>=0.4.9
 pygrabber>=0.2; sys_platform == "win32"
+tzdata>=2024.1
+jeepney>=0.8; sys_platform == "linux"

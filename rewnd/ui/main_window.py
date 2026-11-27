@@ -75,6 +75,8 @@ class MainWindow(QMainWindow):
         self.record.controls_changed.connect(lambda: self.engine.apply_controls(self.cfg["camera"]))
         self.record.refresh_cameras.connect(self._load_cameras)
         self.record.driver_settings.connect(self.engine.open_driver_settings)
+        self.record.schedule_changed.connect(
+            lambda: self.engine.set_exposure_schedule(self.cfg["exposure_schedule"]))
         self.library.export_requested.connect(self.open_export)
         self.record.ambient_changed.connect(self.backdrop.set_ambient)
 
@@ -98,6 +100,7 @@ class MainWindow(QMainWindow):
             self._update_timer.timeout.connect(self.check_for_updates)
             self._update_timer.start(6 * 60 * 60 * 1000)   # long sessions still hear about releases
 
+        self.engine.set_exposure_schedule(self.cfg["exposure_schedule"])
         self.engine.start()
         self._load_cameras()
         self.record.refresh_disk()

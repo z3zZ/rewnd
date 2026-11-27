@@ -24,7 +24,7 @@ Point any webcam at your desk, hit record, and work. rewnd takes a shot every fe
 - **Three themes.** *black* (flat deep black and lime), *light* (its inverse) and *aero* (glossy Frutiger Aero glass), plus any accent colour from the wheel in the top bar.
 - **Fix the camera, not just the video.** Mirror (for webcams that flip you), upside down, rotate, brightness, contrast, saturation, warmth. All of it is non-destructive, so you can change your mind and re-export later.
 - **Camera control.** Manual focus (turn autofocus off and set it with a slider, so the shot stops pulsing in and out of focus), a low-light boost, and on Windows the camera's own driver settings window.
-- **Exposure that handles bright screens.** *Protect* (the default) lowers the exposure until monitors and windows stop blowing out to white. *Manual* gives you a slider. *HDR* takes 2–3 exposures per frame and blends them, like a phone does, so the screens and the room both keep their detail.
+- **Exposure that handles bright screens.** *Protect* (the default) lowers the exposure until monitors and windows stop blowing out to white. *Manual* gives you a slider. *Scheduled* sets it by time of day, or by sunrise and sunset, easing each change in over 25 minutes so the video doesn't flash. *HDR* takes 2–3 exposures per frame and blends them, like a phone does, so the screens and the room both keep their detail.
 - **Doesn't drop out.** The camera stays open for the whole session and reconnects by itself if it disconnects. Stable USB mode (MJPEG) keeps bandwidth low on hubs and long USB extension cables.
 - **Smooth motion**, like Skyflow: each video frame blends the shots around it, so movement flows instead of jumping and camera noise averages out. *Light* or *Strong*.
 - **Smooth out flicker**, hold the last frame at the end so your result lands, and choose High / Balanced / Small file quality.
@@ -76,6 +76,19 @@ Sessions are saved in `~/Timelapses/<date_time>/`: the raw frames in `frames/`, 
 
 **Shortcuts:** `Space` record/stop · `Ctrl+1` Record · `Ctrl+2` Library
 
+## Scheduled exposure
+
+For sessions that run from daylight into the evening, set the camera's exposure to **scheduled**.
+
+- **Profiles** each have a name, a time range and an exposure you type in. A range that ends before it starts (22:00–02:00) runs past midnight. Where ranges overlap, the one higher in the list wins. Outside every range, **night** applies.
+- **Sunrise / sunset** runs the profile you pick while the sun is up and night the rest of the time. rewnd asks the computer where it is (Windows location service, or GeoClue on Linux) only in this mode, or you can type a city or coordinates such as `51.5, -0.12`. The city list is built in, so nothing is looked up online.
+- **Exposure values are in stops**: the shutter is open for 2^value seconds, so `-6` is 1/64 s, `-7` is half as bright and `-5` twice as bright. Decimals are fine, and the same number means the same thing on Windows and Linux.
+- **Easing.** A switch starts at its time and glides to the new value over the ease time (25 minutes by default). While you're not recording, changes apply straight away so the preview shows them. Shots always stay on their interval: rewnd changes the camera just after a shot, not just before one.
+- With **HDR** on, the bracket is taken around the schedule's current value.
+- The bottom bar shows the active profile and when the next switch is.
+- Windows cameras only take whole stops. rewnd sets the nearest one and makes up the rest in the picture (logged per frame, applied in the preview and the export), so easing stays smooth instead of stepping.
+- If a camera doesn't let apps set its exposure, rewnd says so and leaves it on auto, in every exposure mode.
+
 ## Tips
 
 - **Webcam showing you mirrored?** Look → Mirror.
@@ -98,6 +111,7 @@ Settings live in `%APPDATA%\rewnd\config.json` on Windows and `~/.config/rewnd/c
 pip install -r requirements.txt pytest
 python -m pytest
 REWND_FAKE_CAMERA=1 python -m rewnd   # run with a demo camera, no webcam needed
+REWND_FAKE_CAMERA=1 REWND_FAKE_NO_EXPOSURE=1 python -m rewnd   # ...one that can't set its exposure
 ```
 
 Design follows the klokd / errnd family: flat deep black, JetBrains Mono, lime `#C8F135` accents.

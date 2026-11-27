@@ -22,7 +22,28 @@ FONT_FILES = {
 }
 
 
-# ---------- orientation and colour ----------
+# ---------- exposure, orientation and colour ----------
+
+@lru_cache(maxsize=256)
+def _ev_lut(ev_milli):
+    """Gain for an exposure change in stops, in linear light (JPEG values are ~gamma 2.2)."""
+    k = 2.0 ** (ev_milli / 1000.0 / 2.2)
+    return np.clip(np.arange(256, dtype=np.float32) * k, 0, 255).astype(np.uint8)
+
+
+def compensate(img, ev):
+    """Brighten or darken by ev stops. Used for the fraction of a stop the camera couldn't set."""
+    try:
+        ev = float(ev or 0)
+    except (TypeError, ValueError):
+        return img
+    if not np.isfinite(ev):
+        return img
+    ev = int(round(ev * 1000))
+    if abs(ev) < 5:
+        return img
+    return cv2.LUT(img, _ev_lut(max(-2000, min(2000, ev))))
+
 
 def orient(img, look):
     rot = int(look.get("rotate", 0)) % 360
@@ -272,9 +293,9 @@ def draw_overlays(img, ov, elapsed=0.0, wall=None):
 
 # ---------- full pipeline ----------
 
-def render(raw, look, exp, ov, elapsed=0.0, wall=None, size=None, overlays=True):
+def render(raw, look, exp, ov, elapsed=0.0, wall=None, size=None, overlays=True, ev=0.0):
     """Raw camera frame -> finished output frame, exactly as it will appear in the video."""
-    img = orient(raw, look)
+    img = orient(compensate(raw, ev), look)
     img = adjust(img, look)
     h, w = img.shape[:2]
     out_w, out_h = output_size(w, h, exp.get("aspect", "original"),

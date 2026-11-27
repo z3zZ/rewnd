@@ -55,16 +55,18 @@ def test_fuse_keeps_screen_detail_and_room():
 
 
 def test_bracket_offsets_and_clamping():
-    c = exposure.FakeExposure(camera.FakeCapture(64, 36))
-    assert exposure.bracket(0.0, "protect", c) == [0.0, 1.5, 3.0]
-    assert exposure.bracket(0.0, "manual", c) == [-2.0, 0.0, 1.5]
+    c = exposure.FakeExposure(camera.FakeCapture(64, 36))   # -13..-3 stops, like a Windows webcam
+    assert exposure.bracket(-7.0, "protect", c) == [-7.0, -5.5, -4.0]
+    assert exposure.bracket(-7.0, "manual", c) == [-9.0, -7.0, -5.5]
+    # scheduled brackets around the schedule's value, like manual (mid-ease values included)
+    assert exposure.bracket(-6.3, "scheduled", c) == pytest.approx([-8.3, -6.3, -4.8])
     # near the top of the range, duplicates collapse
-    assert exposure.bracket(3.8, "protect", c) == [3.8]
+    assert exposure.bracket(-3.2, "protect", c) == [-3.2]
 
 
 def test_slider_position_round_trip():
     c = exposure.FakeExposure(camera.FakeCapture(64, 36))
-    for ev in (-6, -1.5, 0, 4):
+    for ev in (-13, -8.5, -7, -3):
         assert c.from_pos(c.to_pos(ev)) == pytest.approx(ev)
     assert c.to_pos(99) == 100
 
@@ -94,8 +96,11 @@ Camera Controls
     c = v4l2.V4l2CtlControls("/dev/video0")
     calls = []
 
-    def fake_run(args):
+    def fake_run(args):   # a camera that takes what it's given
+        nonlocal out
         calls.append(args)
+        if args[0] == "--set-ctrl" and args[1].startswith("exposure_absolute="):
+            out = out.replace("value=250", "value=" + args[1].split("=")[1])
         return out if args == ["--list-ctrls"] else ""
     monkeypatch.setattr(c, "_run", fake_run)
     ctrls = c.controls()
@@ -130,7 +135,7 @@ def run_engine(monkeypatch, cam_cfg, seconds, record=None):
 def test_engine_protect_stops_screen_clipping(monkeypatch):
     eng, frame, errors = run_engine(monkeypatch, {"exposure_mode": "protect"}, 6)
     assert not errors
-    assert eng.final_ev is not None and eng.final_ev < 0
+    assert eng.final_ev is not None and eng.final_ev < exposure.FakeExposure.NEUTRAL   # came down
     assert exposure.measure(frame)["clip"] <= exposure.HighlightGuard.CLIP_HIGH * 1.5
 
 

@@ -208,6 +208,9 @@ QLabel#Stat {{ font-family: "{MONO}"; font-size: 20px; font-weight: 700; color: 
 QLabel#StatKey {{ font-family: "{MONO}"; font-size: 20px; font-weight: 700; color: {acc_t}; }}
 QLabel#Mono {{ font-family: "{MONO}"; color: {TEXT_2}; font-size: 11px; }}
 QLabel#FieldLabel {{ color: {TEXT_2}; font-size: 12px; }}
+QLabel#Warn {{ color: {WARN}; font-size: 11px; }}
+QLabel#StatSmall {{ font-family: "{MONO}"; font-size: 14px; font-weight: 700; color: {TEXT}; }}
+QFrame#ProfileCard {{ background: {FIELD}; border: 1px solid {BORDER}; border-radius: 8px; }}
 
 QFrame#Toast {{ background: {toast}; border: 1px solid {BORDER}; border-left: 2px solid {acc}; border-radius: {radius}px; }}
 QFrame#Card, QFrame#Glass {{ background: {panel}; border: 1px solid {panel_edge}; border-radius: {radius}px; }}
@@ -255,18 +258,19 @@ QPushButton#SectionHeader {{
 }}
 QPushButton#SectionHeader:hover {{ color: {TEXT_2}; background: transparent; }}
 
-QComboBox, QLineEdit, QSpinBox, QDoubleSpinBox {{
+QComboBox, QLineEdit, QSpinBox, QDoubleSpinBox, QTimeEdit {{
     background: {FIELD}; border: 1px solid {BORDER}; border-radius: 8px;
     padding: 5px 9px; font-size: 12px; selection-background-color: {RAISED}; selection-color: {TEXT};
 }}
-QSpinBox, QDoubleSpinBox {{ font-family: "{MONO}"; font-size: 11px; }}
-QComboBox:hover, QLineEdit:hover, QSpinBox:hover, QDoubleSpinBox:hover {{ border-color: {HOVER_EDGE}; }}
-QComboBox:focus, QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus {{ border-color: {acc}; }}
+QSpinBox, QDoubleSpinBox, QTimeEdit {{ font-family: "{MONO}"; font-size: 11px; }}
+QComboBox:hover, QLineEdit:hover, QSpinBox:hover, QDoubleSpinBox:hover, QTimeEdit:hover {{ border-color: {HOVER_EDGE}; }}
+QComboBox:focus, QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus, QTimeEdit:focus {{ border-color: {acc}; }}
 QComboBox::drop-down {{ border: none; width: 22px; }}
 QComboBox::down-arrow {{ image: url("{chevron}"); width: 12px; height: 12px; margin-right: 8px; }}
 QComboBox QAbstractItemView {{ background: {menu}; border: 1px solid {BORDER}; border-radius: 8px;
     padding: 4px; selection-background-color: {RAISED}; selection-color: {TEXT}; }}
-QSpinBox::up-button, QSpinBox::down-button, QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {{ width: 0; border: none; }}
+QSpinBox::up-button, QSpinBox::down-button, QDoubleSpinBox::up-button, QDoubleSpinBox::down-button,
+QTimeEdit::up-button, QTimeEdit::down-button {{ width: 0; border: none; }}
 
 QSlider::groove:horizontal {{ height: 2px; background: {groove}; border-radius: 1px; }}
 QSlider::sub-page:horizontal {{ background: {acc}; border-radius: 1px; }}
