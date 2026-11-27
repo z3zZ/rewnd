@@ -7,6 +7,7 @@ the live preview, saves the newest frame on each tick, and reconnects automatica
 camera disappears.
 """
 
+import copy
 import os
 import re
 import shutil
@@ -21,6 +22,7 @@ import cv2
 import numpy as np
 
 from rewnd import exposure, focus, v4l2
+from rewnd import schedule
 from rewnd.platform_utils import IS_MAC, IS_WINDOWS, NO_WINDOW
 from rewnd.session import frame_name
 
@@ -28,6 +30,7 @@ IS_LINUX = sys.platform.startswith("linux")
 COMMON_RESOLUTIONS = ["3840x2160", "2560x1440", "1920x1080", "1600x900", "1280x720", "1024x576",
                       "800x600", "640x480"]
 FAKE = os.environ.get("REWND_FAKE_CAMERA") == "1"
+FAKE_NO_EXPOSURE = os.environ.get("REWND_FAKE_NO_EXPOSURE") == "1"  # demo a camera without exposure control
 
 
 def JPEG_PARAMS(quality):
@@ -232,6 +235,7 @@ class FakeCapture:
         self.alive = True
         self.ev = 0.0       # exposure in stops, driven by exposure.FakeExposure
         self.auto = True
+        self.exposure_supported = not FAKE_NO_EXPOSURE
         self.focus = 140    # sharp at 140, driven by focus.FakeFocus
         self.autofocus = True
 
@@ -326,6 +330,15 @@ class CaptureEngine(threading.Thread):
         self._settle_until = 0.0  # ignore frames taken before the last exposure change landed
         self._last_meter = 0.0
         self._focus = None        # focus.FocusControl for the open camera
+        self._exp_reason = ""     # why the open camera's exposure can't be set, if it can't
+        self._exp_warned = set()  # camera ids already told so (once per camera, not per reconnect)
+
+        self.schedule = schedule.Schedule()
+        self._sched_plan = None   # last schedule.update() result
+        self._sched_due = 0.0
+        self._sched_sent = None   # last schedule value written to the camera
+        self._sched_state = {"active": False}
+        self._comp = 0.0          # stops the camera couldn't hit, logged per frame, made up in rendering
 
     # ----- public API (thread-safe) -----
 
@@ -346,6 +359,18 @@ class CaptureEngine(threading.Thread):
         with self._lock:
             self._cmds.append(("exposure_pos", float(pos)))
 
+    def set_exposure_schedule(self, sched_cfg):
+        """The profiles etc. for the "scheduled" exposure mode (config's exposure_schedule)."""
+        with self._lock:
+            self._cmds.append(("schedule", copy.deepcopy(sched_cfg)))
+
+    def exposure_state(self):
+        """What the schedule is doing right now, for the UI: see schedule.Schedule.update, plus
+        applied (stops the camera is at), comp, supported and reason. {"active": False} outside
+        the scheduled mode."""
+        with self._lock:
+            return dict(self._sched_state)
+
     def set_focus_pos(self, pos):
         """Move the manual focus (slider drags)."""
         with self._lock:
@@ -362,7 +387,9 @@ class CaptureEngine(threading.Thread):
             self.jpeg_quality = int(jpeg_quality)
             self.shot_count = session.next_index() - 1
             self.missed = 0
-            self.next_shot = time.time()
+            # If an exposure change is still landing, start the cadence when it has, so the first
+            # shot isn't late and the second early.
+            self.next_shot = max(time.time(), self._settle_until)
 
     def stop_recording(self):
         with self._lock:
@@ -436,6 +463,7 @@ class CaptureEngine(threading.Thread):
         except Exception:
             self._exp = None
         self._ev = None
+        self._exp_reason = "" if self._exp is not None else exposure.UNSUPPORTED
         try:
             self._focus = focus.open_focus(cap, backend, cam.path if IS_LINUX else None,
                                            cam.index if IS_WINDOWS else None, fake=FAKE)
@@ -518,9 +546,31 @@ class CaptureEngine(threading.Thread):
             return "protect"   # HDR needs a known base exposure to bracket from
         return mode
 
-    def _set_ev(self, ev):
-        self._ev = self._exp.write(ev)
-        self._settle_until = time.time() + exposure.SETTLE_SECONDS
+    def _set_ev(self, ev, settle=True):
+        """Write an exposure. Returns False (after falling back to auto) if the camera refuses."""
+        try:
+            self._ev = self._exp.write(ev)
+        except exposure.ExposureUnsupported as e:
+            self._exposure_failed(str(e))
+            return False
+        if settle:
+            self._settle_until = time.time() + exposure.SETTLE_SECONDS
+        return True
+
+    def _exposure_failed(self, reason):
+        """The camera won't take a manual exposure: say so once, and leave it on auto rather than
+        pretending. exposure_mode() reads "auto" from here on, for this camera connection."""
+        exp, self._exp, self._ev = self._exp, None, None
+        self._exp_reason = reason
+        try:
+            exp.set_auto()
+        except Exception:
+            pass
+        cam = self.camera.id if self.camera else ""
+        if cam not in self._exp_warned:
+            self._exp_warned.add(cam)
+            self.on_error(reason)
+        self._report_exposure()
 
     def _apply_exposure(self):
         exp = self._exp
@@ -531,6 +581,9 @@ class CaptureEngine(threading.Thread):
             if mode == "auto":
                 exp.set_auto()
                 self._ev = None
+            elif mode == "scheduled":
+                self._sched_sent = None
+                self._update_schedule(time.time(), force=True)
             elif mode == "manual":
                 pos = self.cam_cfg.get("exposure")
                 if pos is None:
@@ -552,7 +605,55 @@ class CaptureEngine(threading.Thread):
     def _report_exposure(self):
         exp = self._exp
         pos = exp.to_pos(self._ev) if (exp is not None and self._ev is not None) else None
-        self.on_info({"exposure": {"available": exp is not None, "mode": self.exposure_mode(), "pos": pos}})
+        self.on_info({"exposure": {"available": exp is not None, "mode": self.exposure_mode(), "pos": pos,
+                                   "reason": "" if exp is not None else (self._exp_reason or exposure.UNSUPPORTED)}})
+
+    # ----- scheduled exposure -----
+
+    def _exposure_change_allowed(self, now):
+        """May the schedule change the camera's exposure right now?
+
+        A camera takes SETTLE_SECONDS to take a new exposure. Rather than holding shots back (which
+        throws the interval off), changes wait for the stretch just after a shot when there's at
+        least that long before the next one, so shots stay exactly on their interval. Intervals too
+        short to have such a stretch change straight away.
+        """
+        if self.session is None or self.interval <= exposure.SETTLE_SECONDS + 0.1:
+            return True
+        return self.next_shot - now >= exposure.SETTLE_SECONDS
+
+    def _update_schedule(self, now, force=False):
+        """Runs every pass of the capture loop in scheduled mode. Recomputes the schedule once a
+        second; writes to the camera only when the value moved and a shot isn't about to happen."""
+        if self.cam_cfg.get("exposure_mode") != "scheduled":
+            if self._sched_state.get("active"):
+                with self._lock:
+                    self._sched_state, self._comp = {"active": False}, 0.0
+            return
+        if force or self._sched_plan is None or now >= self._sched_due:
+            self._sched_due = now + 1.0
+            self._sched_plan = self.schedule.update(now, recording=self.session is not None)
+        state = dict(self._sched_plan)
+        value = state["value"]
+        comp = 0.0
+        if self._exp is not None:
+            moved = self._sched_sent is None or abs(value - self._sched_sent) >= 0.005
+            if moved and (self._ev is None or self._exposure_change_allowed(now)):
+                short = self.session is not None and self.interval <= exposure.SETTLE_SECONDS + 0.1
+                if self._set_ev(value, settle=not short):
+                    self._sched_sent = value
+            if self._exp is not None and self._ev is not None:
+                state["applied"] = self._ev
+                # Whatever the camera couldn't hit (whole stops on Windows, its range, a change
+                # held back for a shot) is made up in the picture, within a stop, so easing is smooth.
+                comp = max(-1.0, min(1.0, value - self._ev))
+        exp = self._exp
+        state.update(comp=comp, supported=exp is not None,
+                     reason="" if exp is not None else (self._exp_reason or exposure.UNSUPPORTED),
+                     range=(exp.ev_min, exp.ev_max) if exp is not None else None,
+                     camera_open=self._cap is not None)
+        with self._lock:
+            self._sched_state, self._comp = state, comp
 
     def _meter(self, frame, now):
         """Highlight protection: nudge the exposure between shots."""
@@ -564,8 +665,7 @@ class CaptureEngine(threading.Thread):
         d = self._guard.step(exposure.measure(frame), recording=self.session is not None)
         if d:
             before = self._ev
-            self._set_ev(self._ev + d)
-            if abs(self._ev - before) > 1e-6:
+            if self._set_ev(self._ev + d) and abs(self._ev - before) > 1e-6:
                 self._report_exposure()
 
     def _hdr_frame(self, base_frame):
@@ -581,8 +681,12 @@ class CaptureEngine(threading.Thread):
                     continue
                 exp.write(ev)
                 frames.append(exposure.grab_settled(self._cap.read))
+        except exposure.ExposureUnsupported as e:
+            self._exposure_failed(str(e))
+            return base_frame
         finally:
-            self._set_ev(base)
+            if self._exp is not None:
+                self._set_ev(base)
         try:
             return exposure.fuse(frames)
         except Exception:
@@ -601,6 +705,8 @@ class CaptureEngine(threading.Thread):
         self._cap = None
         self._exp = None
         self._ev = None
+        self._exp_reason = ""
+        self._sched_sent = None
         self._focus = None
 
     def _handle_cmds(self):
@@ -620,6 +726,9 @@ class CaptureEngine(threading.Thread):
             elif cmd[0] == "controls":
                 self.cam_cfg.update(cmd[1])
                 self._apply_controls()
+            elif cmd[0] == "schedule":
+                self.schedule.configure(cmd[1])
+                self._update_schedule(time.time(), force=True)
             elif cmd[0] == "exposure_pos":
                 self.cam_cfg["exposure"] = cmd[1]
                 if self._exp is not None and self.exposure_mode() == "manual":
@@ -647,7 +756,7 @@ class CaptureEngine(threading.Thread):
         ok = cv2.imwrite(str(dest), frame, JPEG_PARAMS(self.jpeg_quality))
         if ok:
             self.shot_count = idx
-            s.log_frame(idx, now)
+            s.log_frame(idx, now, ev=self._comp)
             self.on_shot(idx, dest)
         else:
             self.on_error(f"Couldn't write {dest}. Is the drive full or disconnected?")
@@ -690,6 +799,7 @@ class CaptureEngine(threading.Thread):
                 with self._lock:
                     self._latest, self._latest_ts = frame, now
                 self._meter(frame, now)
+                self._update_schedule(now)
                 warmed = now - self._opened_at >= self.WARMUP_SECONDS
                 if self.session is not None and warmed and now >= self.next_shot and now >= self._settle_until:
                     if self.hdr_active():

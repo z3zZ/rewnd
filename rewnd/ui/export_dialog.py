@@ -93,6 +93,7 @@ class ExportDialog(QDialog):
         self.ov = copy.deepcopy(m.get("overlay") or defaults["overlay"])
         self.frames = session.frames()
         self.stamps = session.timestamps()
+        self.evs = session.frame_ev()
         self.t0 = min(self.stamps.values()) if self.stamps else None
         self.job = None
         self._raw_cache = {}
@@ -215,8 +216,9 @@ class ExportDialog(QDialog):
         m = FRAME_RE.search(self.frames[i].name)
         ts = self.stamps.get(int(m.group(1))) if m else None
         elapsed = (ts - self.t0) if (ts and self.t0) else 0.0
+        ev = self.evs.get(int(m.group(1)), 0.0) if m else 0.0
         img = imaging.render(raw, self.look, self.exp, self.ov, elapsed=elapsed,
-                             wall=imaging.wall_time(ts), size=self._preview_size())
+                             wall=imaging.wall_time(ts), size=self._preview_size(), ev=ev)
         self.preview.set_image(cv_to_qimage(img))
         self.frame_label.setText(f"{i + 1} / {len(self.frames)}")
 

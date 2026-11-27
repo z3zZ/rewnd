@@ -6,9 +6,12 @@ the equivalent itself:
 
 * protect: before each shot, lower the exposure until bright things stop clipping
 * manual: a fixed exposure from a slider
+* scheduled: exposure by time of day, eased between profiles (schedule.py)
 * hdr: take 2-3 exposures per timelapse frame and fuse them (Mertens exposure fusion)
 
-Exposure is handled in stops (EV, log2 of exposure time) so every backend behaves the same.
+Exposure is handled in stops: log2 of the exposure time in seconds, on every backend. -6 is 1/64 s.
+That's the unit Windows cameras use natively; Linux cameras count in 100 us steps and are converted,
+so the same number means the same shutter time on both systems.
 """
 
 import math
@@ -19,7 +22,21 @@ import numpy as np
 
 from rewnd import v4l2
 
-MODES = ("auto", "protect", "manual")
+MODES = ("auto", "protect", "manual", "scheduled")
+V4L2_UNIT = 1e-4   # seconds per step of V4L2's exposure_time_absolute
+UNSUPPORTED = "This camera doesn't let apps set its exposure, so it stays on auto."
+
+
+class ExposureUnsupported(Exception):
+    """The camera refused a manual exposure. The engine reports it and falls back to auto."""
+
+
+def v4l2_to_stops(raw):
+    return math.log2(max(1, raw) * V4L2_UNIT)
+
+
+def stops_to_v4l2(ev):
+    return int(round(2.0 ** ev / V4L2_UNIT))
 
 
 # ---------- exposure controls ----------
@@ -33,7 +50,9 @@ class ExposureControl:
         return None
 
     def write(self, ev):
-        """Switch to manual exposure and set it. Returns the clamped ev that was asked for."""
+        """Switch to manual exposure and set it. Returns the ev the camera actually took, which can
+        differ from the request (clamped to the range, or whole stops on Windows). Raises
+        ExposureUnsupported if the camera refuses."""
         raise NotImplementedError
 
     def set_auto(self):
@@ -52,28 +71,36 @@ class ExposureControl:
 
 
 class V4l2Exposure(ExposureControl):
-    """exposure_time_absolute is in 100 µs units on UVC cameras; ev = log2 of that."""
+    """exposure_time_absolute is in 100 µs units on UVC cameras, converted to stops."""
 
     def __init__(self, ctrls, info):
         self.ctrls = ctrls
         e = info["exposure_time_absolute"]
         self.lo, self.hi = max(1, e.get("min", 1)), max(2, e.get("max", 2047))
-        self.ev_min, self.ev_max = math.log2(self.lo), math.log2(self.hi)
+        self.ev_min, self.ev_max = v4l2_to_stops(self.lo), v4l2_to_stops(self.hi)
         self.has_dynamic = "exposure_dynamic_framerate" in info
+        self._verified = False
 
     def read(self):
         try:
             v = self.ctrls.controls().get("exposure_time_absolute", {}).get("value")
         except Exception:
             return None
-        return math.log2(v) if v and v > 0 else None
+        return v4l2_to_stops(v) if v and v > 0 else None
 
     def write(self, ev):
-        ev = self.clamp(ev)
-        raw = int(round(2 ** ev))
-        self.ctrls.set({"auto_exposure": v4l2.AE_MANUAL,
-                        "exposure_time_absolute": min(self.hi, max(self.lo, raw))})
-        return ev
+        raw = min(self.hi, max(self.lo, stops_to_v4l2(self.clamp(ev))))
+        self.ctrls.set({"auto_exposure": v4l2.AE_MANUAL, "exposure_time_absolute": raw})
+        if not self._verified:
+            # The control backends skip controls the camera rejects, so check the first one stuck.
+            try:
+                got = self.ctrls.controls().get("exposure_time_absolute", {}).get("value")
+            except Exception:
+                got = None
+            if got is not None and abs(got - raw) > max(2, raw * 0.05):
+                raise ExposureUnsupported(UNSUPPORTED)
+            self._verified = True
+        return v4l2_to_stops(raw)
 
     def set_auto(self):
         self.ctrls.set({"auto_exposure": v4l2.AE_APERTURE_PRIORITY})
@@ -90,7 +117,7 @@ class CvExposure(ExposureControl):
         if self.log_units:
             self.ev_min, self.ev_max = -13.0, -1.0
         else:
-            self.ev_min, self.ev_max = math.log2(3), math.log2(2047)
+            self.ev_min, self.ev_max = v4l2_to_stops(3), v4l2_to_stops(2047)
 
     def read(self):
         try:
@@ -99,19 +126,22 @@ class CvExposure(ExposureControl):
             return None
         if self.log_units:
             return float(v) if v else None
-        return math.log2(v) if v and v > 0 else None
+        return v4l2_to_stops(v) if v and v > 0 else None
 
     def write(self, ev):
         ev = self.clamp(ev)
+        value = round(ev) if self.log_units else stops_to_v4l2(ev)   # Windows takes whole stops
         try:
             if self.backend == cv2.CAP_V4L2:
                 self.cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 1)
             elif self.backend == cv2.CAP_DSHOW:
                 self.cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0)
-            self.cap.set(cv2.CAP_PROP_EXPOSURE, round(ev) if self.log_units else int(round(2 ** ev)))
+            ok = self.cap.set(cv2.CAP_PROP_EXPOSURE, value)
         except Exception:
-            pass
-        return ev
+            ok = False
+        if not ok:   # OpenCV returns False when the driver has no exposure control
+            raise ExposureUnsupported(UNSUPPORTED)
+        return float(value) if self.log_units else v4l2_to_stops(value)
 
     def set_auto(self):
         try:
@@ -124,18 +154,22 @@ class CvExposure(ExposureControl):
 
 
 class FakeExposure(ExposureControl):
-    """Drives the demo camera, which renders brighter or darker with its ev."""
-    ev_min, ev_max = -6.0, 4.0
+    """Drives the demo camera, which renders brighter or darker with its ev. Values are stops like a
+    Windows webcam's; the scene looks as it does on auto at NEUTRAL (1/128 s)."""
+    NEUTRAL = -7.0
+    ev_min, ev_max = -13.0, -3.0
 
     def __init__(self, fake):
         self.fake = fake
 
     def read(self):
-        return self.fake.ev
+        return self.fake.ev + self.NEUTRAL
 
     def write(self, ev):
+        if not getattr(self.fake, "exposure_supported", True):
+            raise ExposureUnsupported(UNSUPPORTED)
         ev = self.clamp(ev)
-        self.fake.ev = ev
+        self.fake.ev = ev - self.NEUTRAL
         self.fake.auto = False
         return ev
 
@@ -204,7 +238,8 @@ class HighlightGuard:
 
 def bracket(base, mode, control):
     """Exposures (stops) to take for one HDR frame. Protect already exposes for the highlights, so
-    it brackets upward for the shadows; manual brackets around the chosen exposure."""
+    it brackets upward for the shadows; manual and scheduled bracket around the exposure they set
+    (for scheduled, the schedule's current value, mid-ease or not)."""
     offsets = (0.0, 1.5, 3.0) if mode == "protect" else (-2.0, 0.0, 1.5)
     evs = []
     for o in offsets:

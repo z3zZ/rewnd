@@ -1,6 +1,7 @@
 """A session is one recording: a folder with frames/, a frames.jsonl log and session.json."""
 
 import json
+import math
 import os
 import re
 import shutil
@@ -46,6 +47,7 @@ class Session:
             "look": settings["look"],
             "overlay": settings["overlay"],
             "export": settings["export"],
+            "exposure_schedule": settings.get("exposure_schedule"),
         })
         s.save_meta()
         return s
@@ -85,9 +87,39 @@ class Session:
                 last = max(last, int(m.group(1)))
         return last + 1
 
-    def log_frame(self, idx, ts):
+    def log_frame(self, idx, ts, ev=0.0):
+        """ev: stops of exposure the camera couldn't hit itself, applied when rendering."""
+        rec = {"i": idx, "t": round(ts, 3)}
+        if ev and abs(ev) >= 0.005:
+            rec["ev"] = round(float(ev), 3)
         with open(self.path / "frames.jsonl", "a", encoding="utf-8") as f:
-            f.write(json.dumps({"i": idx, "t": round(ts, 3)}) + "\n")
+            f.write(json.dumps(rec) + "\n")
+
+    MAX_EV = 1.0  # the engine never logs more than a stop; anything bigger is damage, not data
+
+    def frame_ev(self):
+        """{frame index: exposure compensation in stops} for frames that have one.
+
+        Missing or unreadable values mean 0 (the frame renders as captured), so a damaged log can
+        cost a little smoothness but never breaks an export: bad lines are skipped, non-numbers and
+        NaN/inf are ignored, and out-of-range values are clamped to ±MAX_EV.
+        """
+        out = {}
+        log = self.path / "frames.jsonl"
+        try:
+            text = log.read_text(encoding="utf-8", errors="replace") if log.exists() else ""
+        except OSError:
+            return out
+        for line in text.splitlines():
+            try:
+                rec = json.loads(line)
+                ev = float(rec.get("ev", 0) or 0)
+                idx = int(rec["i"])
+            except Exception:
+                continue
+            if ev and math.isfinite(ev):
+                out[idx] = max(-self.MAX_EV, min(self.MAX_EV, ev))
+        return out
 
     def timestamps(self):
         """{frame index: capture time}. Old sessions without a log fall back to file times."""

@@ -1,0 +1,63 @@
+{
+  "capture": {
+    "camera": "/dev/video0",
+    "resolution": "1920x1080",
+    "interval": 22.0,
+    "output_root": "/home/sam/Timelapses",
+    "jpeg_quality": 95,
+    "auto_stop_minutes": 480,
+    "keep_awake": false,
+    "auto_export": true
+  },
+  "camera": {
+    "autofocus": false,
+    "focus": 63.5,
+    "exposure_mode": "manual",
+    "exposure": 37.5,
+    "hdr": true,
+    "low_light": true,
+    "mjpeg": false
+  },
+  "look": {
+    "mirror": true,
+    "flip": false,
+    "rotate": 180,
+    "brightness": -6,
+    "contrast": 10,
+    "saturation": -20,
+    "warmth": 25
+  },
+  "overlay": {
+    "timer": false,
+    "timer_position": "top-left",
+    "clock": true,
+    "clock_position": "bottom-center",
+    "text": "night shift",
+    "text_position": "bottom-left",
+    "watermark": false,
+    "watermark_position": "bottom-right",
+    "scale": 1.25,
+    "accent": "#FF5500",
+    "text_color": "#FFFFFF",
+    "pill_opacity": 0.3
+  },
+  "export": {
+    "aspect": "4:5",
+    "fit": "blur",
+    "crop_offset": 0.25,
+    "length_mode": "fps",
+    "target_seconds": 30.0,
+    "fps": 60,
+    "size": 1440,
+    "quality": "balanced",
+    "deflicker": false,
+    "smooth": "strong",
+    "hold_end": 0.5
+  },
+  "ui": {
+    "theme": "light",
+    "accent": "#E8785A",
+    "check_updates": false,
+    "skip_version": "1.0.2"
+  }
+}

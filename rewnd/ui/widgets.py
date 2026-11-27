@@ -160,6 +160,8 @@ class Toggle(QAbstractButton):
     def paintEvent(self, _):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
+        if not self.isEnabled():
+            p.setOpacity(0.35)
         t = self._pos
         border = theme.qcolor(theme.ACCENT) if t > 0.5 else theme.qcolor(theme.TOGGLE_OFF)
         if not self.isEnabled():

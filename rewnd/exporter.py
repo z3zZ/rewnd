@@ -126,6 +126,11 @@ def export(session, look, exp, ov, out_path=None, progress=None, cancel: threadi
         raise RuntimeError("ffmpeg wasn't found. Reinstall the requirements (pip install -r requirements.txt).")
 
     stamps = session.timestamps()
+    evs = session.frame_ev()   # per-shot exposure compensation; missing or damaged means 0
+
+    def ev_of(path):
+        m = FRAME_RE.search(path.name)
+        return evs.get(int(m.group(1)), 0.0) if m else 0.0
 
     def ts_of(path):
         m = FRAME_RE.search(path.name)
@@ -166,7 +171,7 @@ def export(session, look, exp, ov, out_path=None, progress=None, cancel: threadi
         raw = cv2.imread(str(frames[i]))
         if raw is None:
             raw = first
-        img = imaging.render(raw, look, exp, ov, overlays=False)
+        img = imaging.render(raw, look, exp, ov, overlays=False, ev=ev_of(frames[i]))
         if img.shape[0] != H or img.shape[1] != W:
             img = cv2.resize(img, (W, H))
         with cache_lock:

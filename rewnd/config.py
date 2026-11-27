@@ -44,10 +44,19 @@ DEFAULTS = {
         "autofocus": True,
         "focus": None,               # manual focus, 0..100 across the camera's range; None = lock where it is
         "exposure_mode": "protect",  # auto | protect (stop bright screens/windows blowing out) | manual
+                                     # | scheduled (by time of day, see exposure_schedule)
         "exposure": None,            # manual exposure, 0..100 across the camera's range; None = start from current
         "hdr": False,                # fuse 2-3 exposures per frame (needs a few seconds between shots)
         "low_light": False,
         "mjpeg": True,               # ask the camera for MJPG: less USB bandwidth, more stable on hubs/extenders
+    },
+    "exposure_schedule": {           # the "scheduled" exposure mode, see schedule.py. Values in stops (2**v s)
+        "mode": "fixed",             # fixed (each profile's time range) | sun (day profile sunrise→sunset)
+        "profiles": [{"name": "day", "start": "08:00", "end": "16:00", "value": -7.0}],
+        "night_value": -4.0,         # used outside every range
+        "sun_profile": 0,            # sun mode: which profile runs between sunrise and sunset
+        "ease_minutes": 25.0,        # how long a switch takes
+        "location": {"source": "system", "query": "", "lat": None, "lon": None, "label": ""},
     },
     "look": {
         "mirror": False,

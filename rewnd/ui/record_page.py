@@ -8,9 +8,10 @@ from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (QComboBox, QDoubleSpinBox, QFileDialog, QFrame, QHBoxLayout,
                                QPushButton, QScrollArea, QVBoxLayout, QWidget)
 
-from rewnd import imaging
+from rewnd import imaging, schedule
 from rewnd.platform_utils import IS_WINDOWS, free_space
 from rewnd.ui import forms, theme
+from rewnd.ui.schedule_panel import SchedulePanel, clock, restyle
 from rewnd.ui.widgets import (Chips, PreviewView, RecordButton, Section, Segmented, SliderRow, StatusPill,
                               cv_to_qimage, label)
 
@@ -47,6 +48,51 @@ class Stat(QWidget):
         self.value.setText(text)
 
 
+class ExposureStat(QWidget):
+    """Bottom-bar readout in the scheduled exposure mode: the active profile and what happens next."""
+
+    def __init__(self):
+        super().__init__()
+        v = QVBoxLayout(self)
+        v.setContentsMargins(0, 0, 0, 0)
+        v.setSpacing(2)
+        v.addWidget(label("EXPOSURE", "Caps"), 0, Qt.AlignRight)
+        self.value = label("\u2014", "StatSmall")
+        v.addWidget(self.value, 0, Qt.AlignRight)
+        self.sub = label("", "Faint")
+        v.addWidget(self.sub, 0, Qt.AlignRight)
+        self.hide()
+
+    def set_state(self, st):
+        if not st.get("active"):
+            self.hide()
+            return
+        self.show()
+        if st.get("supported") is False:
+            self.value.setText("auto")
+            self.sub.setText("camera can't do manual")
+            restyle(self.sub, "Warn")
+            self.setToolTip(st.get("reason", ""))
+            return
+        restyle(self.sub, "Faint")
+        self.value.setText(f"{st['name']}  {schedule.fmt_stops(st['value'])}")
+        if st.get("easing") and st.get("ease_end"):
+            left = max(1, round((st["ease_end"] - time.time()) / 60))
+            self.sub.setText(f"easing in from {st.get('ease_from') or 'last'} \u00b7 {left} min")
+        elif st.get("next_at"):
+            self.sub.setText(f"{st['next_name']} at {clock(st['next_at'])}")
+        else:
+            self.sub.setText(st.get("note") or "no switch coming up")
+        tip = (f"Exposure {st['value']:.2f} stops ({schedule.shutter_text(st['value'])}), "
+               f"profile \"{st['name']}\".")
+        if st.get("next_at"):
+            tip += (f" Switches to \"{st['next_name']}\" ({schedule.fmt_stops(st['next_value'])}) "
+                    f"at {clock(st['next_at'])}.")
+        if st.get("note"):
+            tip += f" Note: {st['note']}."
+        self.setToolTip(tip)
+
+
 class RecordPage(QWidget):
     record_clicked = Signal()
     ambient_changed = Signal(object)
@@ -55,6 +101,7 @@ class RecordPage(QWidget):
     controls_changed = Signal()
     refresh_cameras = Signal()
     driver_settings = Signal()
+    schedule_changed = Signal()
 
     def __init__(self, cfg, engine):
         super().__init__()
@@ -66,6 +113,7 @@ class RecordPage(QWidget):
         self.rec_started = None
         self._last_ts = 0.0
         self._last_ambient = 0.0
+        self._last_state_ui = 0.0
         self.cameras = []
 
         root = QHBoxLayout(self)
@@ -108,6 +156,8 @@ class RecordPage(QWidget):
         self.rec_btn.setToolTip("Start recording (Space)")
         bl.addWidget(self.rec_btn)
         bl.addStretch(1)
+        self.exp_stat = ExposureStat()
+        bl.addWidget(self.exp_stat)
         right_stats = QVBoxLayout()
         right_stats.setSpacing(2)
         right_stats.addWidget(label("NEXT SHOT", "Caps"), 0, Qt.AlignRight)
@@ -233,19 +283,23 @@ class RecordPage(QWidget):
         self.focus_note.setVisible(bool(note))
 
     def _build_exposure(self, sec, cam, ctl):
-        self.exp_mode = Segmented([("auto", "auto"), ("protect", "protect"), ("manual", "manual")],
-                                  cam.get("exposure_mode", "protect"))
+        self.exp_mode = Segmented([("auto", "auto"), ("protect", "protect"), ("manual", "manual"),
+                                   ("scheduled", "scheduled")], cam.get("exposure_mode", "protect"))
 
         def mode(v):
             cam["exposure_mode"] = v
             self._sync_exposure_ui()
             ctl()
+            if v == "scheduled":
+                self.schedule_panel.activated()
         self.exp_mode.changed.connect(mode)
         self.exp_mode_label = sec.stacked(
             "exposure", self.exp_mode,
             "auto: the camera decides, and bright screens or windows can blow out to white.\n"
             "protect: rewnd lowers the exposure until bright things keep their detail.\n"
-            "manual: you set it with the slider, and it stays put.")
+            "manual: you set it with the slider, and it stays put.\n"
+            "scheduled: different exposures for different times of day, or sunrise and sunset, "
+            "eased in gradually so the video doesn't flash.")
 
         pos = cam.get("exposure")
         self.exp_slider = SliderRow("exposure level", 0, 100, 50 if pos is None else round(pos), fmt="{:d}",
@@ -257,6 +311,14 @@ class RecordPage(QWidget):
             self.settings_changed.emit()
         self.exp_slider.changed.connect(level)
         sec.add(self.exp_slider)
+
+        self.schedule_panel = SchedulePanel(self.cfg["exposure_schedule"], cam)
+
+        def sched():
+            self.schedule_changed.emit()
+            self.settings_changed.emit()
+        self.schedule_panel.changed.connect(sched)
+        sec.add(self.schedule_panel)
 
         self.hdr_toggle = forms.toggle(
             sec, "HDR", cam, "hdr", lambda: (self._sync_exposure_ui(), ctl()), self.accent,
@@ -273,6 +335,7 @@ class RecordPage(QWidget):
         avail = self._exp_available
         self.exp_mode.setEnabled(avail)
         self.exp_slider.setVisible(avail and cam.get("exposure_mode") == "manual")
+        self.schedule_panel.setVisible(avail and cam.get("exposure_mode") == "scheduled")
         self.hdr_toggle.setEnabled(avail)
         note = ""
         if not avail:
@@ -516,6 +579,13 @@ class RecordPage(QWidget):
             self.rec_btn.set_state(False)
             self.next_label.setText("—")
 
+        exp_state = self.engine.exposure_state()
+        now = time.time()
+        if now - self._last_state_ui >= 0.5:
+            self._last_state_ui = now
+            self.exp_stat.set_state(exp_state)
+            self.schedule_panel.set_state(exp_state)
+
         frame, ts = self.engine.latest()
         if frame is None or (ts == self._last_ts and not self._force):
             return
@@ -528,7 +598,8 @@ class RecordPage(QWidget):
         elapsed = (time.time() - self.rec_started) if (rec and self.rec_started) else 0.0
         try:
             img = imaging.render(frame, self.cfg["look"], self.cfg["export"], self.cfg["overlay"],
-                                 elapsed=elapsed, wall=imaging.wall_time(ts), size=self._preview_size())
+                                 elapsed=elapsed, wall=imaging.wall_time(ts), size=self._preview_size(),
+                                 ev=exp_state.get("comp", 0.0))
         except Exception:
             return
         self.preview.set_image(cv_to_qimage(img))
